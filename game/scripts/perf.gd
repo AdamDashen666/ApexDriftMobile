@@ -21,6 +21,9 @@ var _worst := 0.0
 var quality := 1
 var native := 120.0         # 屏幕最高刷新率
 var _lock := 0.0
+var step := 0                # 兜底档：1 关抗锯齿 2 再降分辨率 3 关阴影
+var _stuck := 0.0
+signal step_changed
 
 func setup(q: int) -> void:
 	quality = q
@@ -37,13 +40,16 @@ func setup(q: int) -> void:
 	scale = hi
 	_cap = hi
 	_cool = 2.0
+	step = 0
+	_stuck = 0.0
+	step_changed.emit()
 	apply()
 
 func apply() -> void:
 	var vp := get_viewport()
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = fixed_scale if fixed_scale > 0.0 else scale
-	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][quality]
+	vp.msaa_3d = Viewport.MSAA_DISABLED if step >= 1 else [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][quality]
 
 func _process(dt: float) -> void:
 	if dt <= 0.0:
@@ -75,6 +81,19 @@ func _decide() -> void:
 			_cap = hi
 	else:
 		_lock = 0.0
+	# 最低分辨率还掉帧：逐级关掉贵的东西，保帧率
+	var steady60 := absf(fps - 60.0) < 1.5 and low_fps > 48.0
+	if scale <= lo + 0.01 and fps < target * 0.93 and not (steady60 and target > 100.0):
+		_stuck += 0.5
+		if _stuck >= 3.0 and step < 3:
+			_stuck = 0.0
+			step += 1
+			if step == 2:
+				lo *= 0.8
+			step_changed.emit()
+			apply()
+	else:
+		_stuck = maxf(0.0, _stuck - 0.5)
 	if target < native and fps > target * 1.2:
 		target = native
 	_cool -= 0.5

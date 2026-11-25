@@ -35,6 +35,7 @@ func _ready() -> void:
 	perf = Perf.new()
 	add_child(perf)
 	perf.setup(Save.quality)
+	perf.step_changed.connect(_perf_step)
 	car = Car.new()
 	add_child(car)
 	cam = Cam.new()
@@ -77,6 +78,10 @@ func _ready() -> void:
 	goto_menu()
 	Save.store()
 
+func _perf_step() -> void:
+	if world != null:
+		world.sun.shadow_enabled = perf.step < 3
+
 func free_map() -> bool:
 	return world != null and world.meta.get("free", false)
 
@@ -96,6 +101,7 @@ func load_map(i: int) -> void:
 	world.load_map(GameData.MAPS[i]["id"])
 	world.set_weather(int(Save.weather[i]))
 	world.set_quality(Save.quality)
+	_perf_step()
 	loaded_map = i
 	car.track = world.track
 	car.wall_lat = float(world.meta.get("wall", 0.0))
@@ -582,6 +588,38 @@ func _autotest() -> void:
 	await ticks(60)
 	_ck(world.moved_props() == 0, "连按两次复位：道具复原 %d" % world.moved_props())
 	_ck(car.global_position.distance_to(Vector3(125, 0.1, -10)) > 20.0, "连按两次复位：回到起点 %s" % str(car.global_position))
+	# 动态分辨率与兜底档
+	perf.fixed_scale = 0.0
+	perf.setup(1)
+	perf.native = 120.0
+	perf.target = 120.0
+	perf.lo = 0.5
+	perf.hi = 0.9
+	perf.scale = 0.9
+	for q in 120:
+		perf.fps = 85.0
+		perf.low_fps = 60.0
+		perf._decide()
+	_ck(perf.scale < 0.45 and perf.step == 3 and not world.sun.shadow_enabled, "掉帧兜底：比例 %.2f 档 %d" % [perf.scale, perf.step])
+	perf.setup(1)
+	perf.native = 120.0
+	perf.target = 120.0
+	perf.lo = 0.5
+	perf.hi = 0.9
+	perf.scale = 0.9
+	for q in 60:
+		perf.fps = 60.0
+		perf.low_fps = 58.0
+		perf._decide()
+	_ck(perf.target == 60.0 and perf.step == 0 and world.sun.shadow_enabled, "低电量 60Hz：目标 %.0f 档 %d" % [perf.target, perf.step])
+	for q in 30:
+		perf.fps = 60.0
+		perf._decide()
+	var sc60 := perf.scale
+	perf.fps = 118.0
+	perf._decide()
+	_ck(perf.target == 120.0 and sc60 > 0.6, "恢复高刷：目标 %.0f 比例 %.2f" % [perf.target, sc60])
+	perf.setup(Save.quality)
 	# 存档写读一遍（平时测试不落盘）
 	var keep := [Save.map, Save.car, Save.paints.duplicate(), Save.weather.duplicate(), Save.best.duplicate(), Save.steer_sens]
 	Save.persist = true
