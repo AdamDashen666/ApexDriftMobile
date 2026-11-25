@@ -19,11 +19,14 @@ var _cap := 1.0              # 升过头掉帧后，记住上限一段时间
 var _cap_t := 0.0
 var _worst := 0.0
 var quality := 1
+var native := 120.0         # 屏幕最高刷新率
+var _lock := 0.0
 
 func setup(q: int) -> void:
 	quality = q
 	var r := DisplayServer.screen_get_refresh_rate()
 	target = r if r > 20.0 and r < 500.0 else 60.0
+	native = target
 	Engine.max_fps = 0
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
 	var h := float(DisplayServer.window_get_size().y)
@@ -62,6 +65,18 @@ func _process(dt: float) -> void:
 func _decide() -> void:
 	if fixed_scale > 0.0:
 		return
+	# 低电量模式会把高刷屏锁在 60：降到最低分辨率还是稳稳 60，就按 60 跑、把画质还回来
+	if target > 100.0 and scale <= lo + 0.01 and absf(fps - 60.0) < 1.5 and low_fps > 48.0:
+		_lock += 0.5
+		if _lock >= 3.0:
+			target = 60.0
+			_lock = 0.0
+			_cap_t = 0.0
+			_cap = hi
+	else:
+		_lock = 0.0
+	if target < native and fps > target * 1.2:
+		target = native
 	_cool -= 0.5
 	_cap_t = maxf(0.0, _cap_t - 0.5)
 	if _cap_t <= 0.0:

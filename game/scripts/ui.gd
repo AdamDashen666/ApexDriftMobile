@@ -266,7 +266,7 @@ func _b(id: String, r: Rect2) -> bool:
 
 func _txt(f: Font, s: String, p: Vector2, sz: int, c: Color, al := HORIZONTAL_ALIGNMENT_LEFT, w := -1.0) -> void:
 	var x := p.x
-	var ol := Color(0, 0, 0, 0.55 * c.a) if (screen == "play" or screen == "menu") and c.v > 0.4 else Color(0, 0, 0, 0)
+	var ol := Color(0, 0, 0, 0.55 * c.a) if (screen == "play" or screen == "menu") and c.v > 0.4 and sz >= 16 else Color(0, 0, 0, 0)
 	if w < 0.0 and al != HORIZONTAL_ALIGNMENT_LEFT:
 		var tw := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
 		x = p.x - (tw if al == HORIZONTAL_ALIGNMENT_RIGHT else tw * 0.5)
@@ -342,7 +342,9 @@ func _draw_hud() -> void:
 		var col: Color = [Color(1, 0.8, 0.35), Color(1, 0.62, 0.2), Color(1, 0.35, 0.3)][callout_k]
 		_txt(f_zh, callout, Vector2(w * 0.5, 152), int(30 * k), Color(col, a), HORIZONTAL_ALIGNMENT_CENTER)
 	if sc.zone != "":
-		_txt(f_zh, sc.zone, Vector2(safe_l + 8, 96), 20, Color(accent, 0.95))
+		var zw := f_zh.get_string_size(sc.zone, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+		_skew(Rect2(safe_l, 72, zw + 30, 34), Color(INK, 0.6))
+		_txt(f_zh, sc.zone, Vector2(safe_l + 18, 96), 20, accent.lightened(0.25))
 	if sc.wrong and not auto_on:
 		_txt(f_zh, "逆行", Vector2(w * 0.5, 200), 40, Color(1, 0.3, 0.25, 0.6 + 0.4 * sin(t * 8.0)), HORIZONTAL_ALIGNMENT_CENTER)
 	# 小地图
@@ -351,7 +353,7 @@ func _draw_hud() -> void:
 		var p: Perf = main.perf
 		var fc := Color(0.5, 0.95, 0.5) if p.fps > p.target * 0.95 else (Color(1, 0.8, 0.3) if p.fps > 55 else Color(1, 0.35, 0.3))
 		_txt(f_num, "%d" % int(round(p.fps)), Vector2(rx - 150, 34), 28, fc, HORIZONTAL_ALIGNMENT_RIGHT)
-		_txt(f_num2, "FPS  %d%%" % int(p.scale * 100.0 + 0.5), Vector2(rx - 146, 54), 14, Color(PAPER, 0.6), HORIZONTAL_ALIGNMENT_RIGHT)
+		_txt(f_num2, "FPS  %d%%" % int(p.scale * 100.0 + 0.5), Vector2(rx - 146, 55), 16, Color(PAPER, 0.85), HORIZONTAL_ALIGNMENT_RIGHT)
 	# 车速
 	_speedo(Vector2(w * 0.5, h - 74 - safe_b), car)
 	# 触控
@@ -489,7 +491,8 @@ func _draw_menu() -> void:
 	# 压暗
 	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(w * 0.5, 0), Vector2(w * 0.34, h), Vector2(0, h)]), PackedColorArray([Color(INK, 0.78), Color(INK, 0.0), Color(INK, 0.0), Color(INK, 0.78)]))
 	draw_polygon(PackedVector2Array([Vector2(0, h - 290), Vector2(w, h - 290), Vector2(w, h), Vector2(0, h)]), PackedColorArray([Color(INK, 0.0), Color(INK, 0.0), Color(INK, 0.92), Color(INK, 0.92)]))
-	draw_polygon(PackedVector2Array([Vector2(w - 420, 0), Vector2(w, 0), Vector2(w, h), Vector2(w - 360, h)]), PackedColorArray([Color(INK, 0.35), Color(INK, 0.86), Color(INK, 0.86), Color(INK, 0.35)]))
+	draw_polygon(PackedVector2Array([Vector2(w - 560, 0), Vector2(w - 310, 0), Vector2(w - 310, h), Vector2(w - 520, h)]), PackedColorArray([Color(INK, 0.0), Color(INK, 0.80), Color(INK, 0.80), Color(INK, 0.0)]))
+	draw_rect(Rect2(w - 310, 0, 310, h), Color(INK, 0.80))
 	var x := safe_l + 6
 	for k in 3:
 		_skew(Rect2(x + k * 11, 20, 6, 32), Color(accent, 1.0 - 0.3 * k), 0.34)
@@ -530,6 +533,7 @@ func _draw_menu() -> void:
 	var np := GameData.PAINTS.size()
 	for i in np:
 		var pc := Vector2(px + 14 + i * 35.0, 344)
+		draw_circle(pc, 14.5, Color(1, 1, 1, 0.45))
 		draw_circle(pc, 13, GameData.PAINTS[i][4])
 		if int(Save.paints[Save.car]) == i:
 			draw_arc(pc, 17, 0, TAU, 32, PAPER, 2.5, true)

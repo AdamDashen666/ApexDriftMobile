@@ -65,6 +65,9 @@ func _ready() -> void:
 		if a == "--autotest":
 			_autotest()
 			return
+		if a == "--bench":
+			_bench()
+			return
 		if a.begins_with("--shots="):
 			_shots(a.substr(8))
 			return
@@ -625,6 +628,52 @@ func _cap(dir: String, name: String, frames := 6) -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_jpg("%s/%s.jpg" % [dir, name], 0.9)
 	print("[APEX] shot ", name, " draws=", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), " prims=", Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), " objs=", Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+
+# 实时跑分（CI 的 macOS，Metal + Mobile 渲染器，关垂直同步）：看每帧 CPU / GPU 耗时
+func _bench() -> void:
+	external = true
+	sfx.enabled = false
+	Save.sound = false
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	perf.fixed_scale = perf.hi
+	perf.apply()
+	var rid := get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	for mi in 4:
+		load_map(mi)
+		goto_menu()
+		st = St.PLAY
+		ui.screen = "play"
+		cam.orbit = false
+		car.locked = false
+		ui.count = 0.0
+		begin_auto()
+		for i in 90:
+			await get_tree().process_frame
+		var dts: Array[float] = []
+		var cpu := 0.0
+		var phy := 0.0
+		var rc := 0.0
+		var rg := 0.0
+		var t0 := Time.get_ticks_usec()
+		var last := t0
+		while Time.get_ticks_usec() - t0 < 15000000:
+			await get_tree().process_frame
+			var now := Time.get_ticks_usec()
+			dts.append((now - last) / 1000.0)
+			last = now
+			cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+			phy += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+			rc += RenderingServer.viewport_get_measured_render_time_cpu(rid) + RenderingServer.get_frame_setup_time_cpu()
+			rg += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		var n := dts.size()
+		var sum := 0.0
+		for d in dts:
+			sum += d
+		dts.sort()
+		print("[BENCH] %s 帧数 %d 平均 %.2fms(%.0ffps) 中位 %.2f 99%% %.2f 最差 %.1f | 脚本 %.2f 物理 %.2f 渲染CPU %.2f GPU %.2f | 窗口 %s 3D 比例 %.2f draws %d" % [GameData.MAPS[mi]["id"], n, sum / n, 1000.0 * n / sum, dts[n / 2], dts[int(n * 0.99)], dts[n - 1], cpu / n, phy / n, rc / n, rg / n, str(DisplayServer.window_get_size()), perf.fixed_scale, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))])
+		car.stop_auto(false)
+	get_tree().quit(0)
 
 func _shots(dir: String) -> void:
 	external = true

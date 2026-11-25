@@ -176,31 +176,21 @@ jobs:
           name: ios-app
           path: ${{ env.OUT }}/*.ipa
 
-      # 模拟器：启动、截图、看有没有崩溃（模拟器不代表真机帧率）
-      - name: Simulator smoke test
+      # Godot 官方 iOS 模板的模拟器库只有 x86_64，且模拟器不支持 Mobile/Metal 渲染器，所以改在 macOS 上
+      # 用同一套 Mobile 渲染器 + Metal 驱动跑真画面（着色器走 Metal 编译），再关垂直同步跑一遍分。
+      - name: Metal run on macOS
         if: success() || failure()
         continue-on-error: true
         run: |
-          xcodebuild build -project build/ios/ApexDrift.xcodeproj -scheme ApexDrift -configuration Release \
-            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath build/sim \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            > "$OUT/logs/ios-sim-build.log" 2>&1 || { grep -E "error:|FAILED" "$OUT/logs/ios-sim-build.log" | head -20; }
-          APP=$(find build/sim/Build/Products -maxdepth 2 -name "*.app" | head -1)
-          [ -n "$APP" ] || { echo "::warning::模拟器版没编出来"; exit 0; }
-          lipo -archs "$APP/ApexDrift" || true
-          BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
-          xcrun simctl list devices available -j > "$RUNNER_TEMP/sims.json"
-          UDID=$(jq -r '[.devices | to_entries[] | select(.key|contains("iOS")) | .value[] | select(.name|startswith("iPhone"))] | last | .udid' "$RUNNER_TEMP/sims.json")
-          xcrun simctl boot "$UDID" || true
-          xcrun simctl bootstatus "$UDID" -b
-          codesign -s - --force --deep "$APP" || true
-          xcrun simctl install "$UDID" "$APP"
-          xcrun simctl launch --terminate-running-process --stdout="$OUT/logs/sim-stdout.log" --stderr="$OUT/logs/sim-stdout.log" "$UDID" "$BID" || true
-          for i in 1 2 3; do sleep 12; xcrun simctl io "$UDID" screenshot "$OUT/screenshots/sim-$i.png" || true; done
-          xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "ApexDrift"' --style compact > "$OUT/logs/sim-runtime.log" 2>&1 || true
-          pgrep -f "ApexDrift.app/ApexDrift" >/dev/null && echo "模拟器里 App 在运行" || echo "::warning::模拟器里 App 没有在运行"
-          mkdir -p "$OUT/logs/crashes"; find ~/Library/Logs/DiagnosticReports -name "ApexDrift*" -exec cp {} "$OUT/logs/crashes/" \; 2>/dev/null || true
-          tail -40 "$OUT/logs/sim-stdout.log" || true
+          G=~/godot/Godot.app/Contents/MacOS/Godot
+          system_profiler SPDisplaysDataType | head -20; sysctl -n machdep.cpu.brand_string
+          mkdir -p "$OUT/screenshots/metal"
+          run() { local lim=$1 log=$2; shift 2; "$@" > "$log" 2>&1 & local p=$!; for i in $(seq 1 $lim); do sleep 1; kill -0 $p 2>/dev/null || break; done; kill -9 $p 2>/dev/null || true; }
+          run 420 "$OUT/logs/metal-shots.log" "$G" --path game --rendering-method mobile --rendering-driver metal --resolution 1334x616 --fixed-fps 60 -- --shots="$OUT/screenshots/metal"
+          grep -E "\[APEX\]|ERROR|SHADER|SCRIPT" "$OUT/logs/metal-shots.log" | head -50 || true
+          run 200 "$OUT/logs/metal-bench.log" "$G" --path game --rendering-method mobile --rendering-driver metal --resolution 1920x1080 -- --bench
+          grep -E "\[BENCH\]|\[APEX\]|ERROR" "$OUT/logs/metal-bench.log" | head -30 || true
+          mkdir -p "$OUT/logs/crashes"; find ~/Library/Logs/DiagnosticReports -name "Godot*" -exec cp {} "$OUT/logs/crashes/" \; 2>/dev/null || true
 
       - uses: actions/upload-artifact@v6
         if: always()
