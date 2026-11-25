@@ -112,24 +112,27 @@ render_mode diffuse_lambert, specular_schlick_ggx;
 uniform float rough = 0.7;
 uniform float spec = 0.35;
 uniform float emit = 0.0;
+uniform float raw = 0.0;
 void fragment() {
-	ALBEDO = COLOR.rgb;
+	// glTF 顶点色导入时被编码成 sRGB，这里解回线性；代码里建的网格 raw=1
+	vec3 c = mix(pow(COLOR.rgb, vec3(2.2)), COLOR.rgb, raw);
+	ALBEDO = c;
 	ROUGHNESS = rough;
 	SPECULAR = spec;
-	EMISSION = COLOR.rgb * (1.0 - COLOR.a) * emit;
+	EMISSION = c * (1.0 - COLOR.a) * emit;
 }
 """
 
 const VCOL_FLAT := """
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
-void fragment() { ALBEDO = COLOR.rgb; ROUGHNESS = 1.0; }
+void fragment() { ALBEDO = pow(COLOR.rgb, vec3(2.2)); ROUGHNESS = 1.0; }
 """
 
 const RAIL := """
 shader_type spatial;
 render_mode diffuse_lambert, specular_schlick_ggx, cull_disabled;
-void fragment() { ALBEDO = COLOR.rgb; METALLIC = 0.35; ROUGHNESS = 0.45; SPECULAR = 0.4; }
+void fragment() { ALBEDO = pow(COLOR.rgb, vec3(2.2)); METALLIC = 0.35; ROUGHNESS = 0.45; SPECULAR = 0.4; }
 """
 
 const MARKS := """
@@ -138,7 +141,7 @@ render_mode diffuse_lambert, specular_disabled;
 uniform sampler2D detail : filter_linear_mipmap, repeat_enable;
 varying vec3 wp;
 void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
-void fragment() { ALBEDO = COLOR.rgb * (0.62 + texture(detail, wp.xz * 0.25).r * 0.75); ROUGHNESS = 0.9; }
+void fragment() { ALBEDO = pow(COLOR.rgb, vec3(2.2)) * (0.62 + texture(detail, wp.xz * 0.25).r * 0.75); ROUGHNESS = 0.9; }
 """
 
 const WATER := """
@@ -179,7 +182,7 @@ void fragment() {
 	vec4 t = texture(tex, UV);
 	ALBEDO = t.rgb * tint * COLOR.rgb;
 	if (!FRONT_FACING) NORMAL = -NORMAL;
-	ALPHA = t.a;
+	ALPHA = t.a * (1.0 + max(0.0, textureQueryLod(tex, UV).x) * 0.22);
 	ALPHA_SCISSOR_THRESHOLD = 0.42;
 	ROUGHNESS = 1.0;
 	BACKLIGHT = t.rgb * tint * 0.25;
@@ -199,7 +202,7 @@ void fragment() {
 	vec4 t = texture(tex, UV);
 	ALBEDO = t.rgb * gain * COLOR.rgb;
 	if (!FRONT_FACING) NORMAL = -NORMAL;
-	ALPHA = t.a;
+	ALPHA = t.a * (1.0 + max(0.0, textureQueryLod(tex, UV).x) * 0.25);
 	ALPHA_SCISSOR_THRESHOLD = 0.38;
 	ROUGHNESS = 1.0;
 }
@@ -336,4 +339,5 @@ static func std(c: Color, metal: float, rough: float, spec: float) -> StandardMa
 	m.roughness = rough
 	m.metallic_specular = spec
 	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
 	return m

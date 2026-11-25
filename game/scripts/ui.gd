@@ -265,12 +265,13 @@ func _b(id: String, r: Rect2) -> bool:
 
 func _txt(f: Font, s: String, p: Vector2, sz: int, c: Color, al := HORIZONTAL_ALIGNMENT_LEFT, w := -1.0) -> void:
 	var x := p.x
+	var ol := Color(0, 0, 0, 0.55 * c.a) if screen == "play" and c.v > 0.4 else Color(0, 0, 0, 0)
 	if w < 0.0 and al != HORIZONTAL_ALIGNMENT_LEFT:
 		var tw := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
 		x = p.x - (tw if al == HORIZONTAL_ALIGNMENT_RIGHT else tw * 0.5)
-		draw_string(f, Vector2(x, p.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, c)
-	else:
-		draw_string(f, p, s, al, w, sz, c)
+	if ol.a > 0.0:
+		draw_string_outline(f, Vector2(x, p.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, 5, ol)
+	draw_string(f, Vector2(x, p.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, c)
 
 func _skew(r: Rect2, c: Color, k := 0.18) -> void:
 	var d := r.size.y * k
@@ -355,10 +356,10 @@ func _draw_hud() -> void:
 	if not auto_on:
 		_draw_touch()
 	else:
-		var r2 := Rect2(w * 0.5 - 190, h - 178, 380, 34)
+		var r2 := Rect2(safe_l, h - 64 - safe_b, 372, 36)
 		_skew(r2, Color(INK, 0.6))
 		_txt(f_zh, "自动漂移中 · 碰任意驾驶键接管 · 跑完复位", r2.get_center() + Vector2(4, 8), 18, PAPER, HORIZONTAL_ALIGNMENT_CENTER)
-		draw_rect(Rect2(r2.position.x + 8, r2.end.y + 4, 360.0 * clampf(car.auto.s / maxf(car.auto.total, 1.0), 0.0, 1.0), 3), accent)
+		draw_rect(Rect2(r2.position.x, r2.end.y + 5, 366.0 * clampf(car.auto.s / maxf(car.auto.total, 1.0), 0.0, 1.0), 3), accent)
 		_draw_touch(0.35)
 		var rd := Rect2(rx - 330, 14, 96, 36)
 		_skew(rd, Color(accent, 0.9) if Save.director else Color(INK, 0.6))
@@ -399,6 +400,8 @@ func _draw_touch(al := 1.0) -> void:
 	_circle_btn(rc["gas"][0], rc["gas"][1], "自动" if Save.auto_throttle else "油门", thr_out > 0.5, Color(0.5, 0.95, 0.45), al)
 	_circle_btn(rc["brake"][0], rc["brake"][1], "刹车", brk_out > 0.5, Color(1, 0.4, 0.32), al)
 	_circle_btn(rc["hand"][0], rc["hand"][1], "手刹", hand_out, accent, al)
+	if main.car.auto != null:
+		return
 	if Save.steer_mode == 1:
 		for k in ["left", "right"]:
 			var c: Vector2 = rc[k][0]
@@ -431,7 +434,7 @@ func _speedo(c: Vector2, car: Car) -> void:
 	var a1 := PI * 2.20
 	draw_arc(c, 66, a0, a1, 48, Color(PAPER, 0.18), 6.0, true)
 	var u := clampf((car.rpm - 900.0) / 7200.0, 0.0, 1.0)
-	draw_arc(c, 66, a0, lerpf(a0, a1, u), 48, accent if u < 0.86 else Color(1, 0.3, 0.25), 6.0, true)
+	draw_arc(c, 66, a0, lerpf(a0, a1, u), 48, accent if u < 0.93 else Color(1, 0.3, 0.25), 6.0, true)
 	_txt(f_num, "%d" % int(car.kmh), c + Vector2(0, 14), 52, PAPER, HORIZONTAL_ALIGNMENT_CENTER)
 	_txt(f_num2, "km/h", c + Vector2(0, 33), 16, Color(PAPER, 0.7), HORIZONTAL_ALIGNMENT_CENTER)
 	var g := "R" if car.gear < 0 else str(car.gear)

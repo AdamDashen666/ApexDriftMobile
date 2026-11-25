@@ -557,8 +557,10 @@ func _autotest() -> void:
 	await hold(3.0, 1, 0, 0, false)
 	var mv := world.moved_props()
 	_ck(still == 0 and mv >= 6 and car.global_transform.basis.y.y > 0.8, "撞箱墙：静置移动 %d，撞动 %d，车速 %.0f 竖直 %.2f" % [still, mv, car.kmh, car.global_transform.basis.y.y])
+	car.teleport(Vector3(-290, 0.1, -345), 0.0)
+	await ticks(2)
 	world.reset_props()
-	await ticks(20)
+	await ticks(40)
 	_ck(world.moved_props() == 0, "道具复原 %d" % world.moved_props())
 	# 界面：所有按钮走一遍
 	external = false

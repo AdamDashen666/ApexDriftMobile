@@ -194,6 +194,7 @@ func _tree_mesh(sp: String) -> Mesh:
 			var sm := StandardMaterial3D.new()
 			sm.albedo_texture = Mats.tex("bark_%s.jpg" % bk)
 			sm.vertex_color_use_as_albedo = true
+			sm.vertex_color_is_srgb = true
 			sm.roughness = 1.0
 			sm.metallic_specular = 0.1
 			m.surface_set_material(s, sm)
@@ -467,7 +468,6 @@ func _sign_mesh() -> Mesh:
 	for z in [-0.3, 0.3]:
 		_quad(st, Vector3(0.01, -0.3, z - 0.03), Vector3(0.01, -0.3, z + 0.03), Vector3(0.01, y0, z + 0.03), Vector3(0.01, y0, z - 0.03), n, Color(0.4, 0.4, 0.4))
 	var m := st.commit()
-	m.surface_set_material(0, Mats.make("rail", Mats.RAIL))
 	var mt := Mats.make("signs", "shader_type spatial;\nrender_mode cull_disabled, diffuse_lambert, specular_disabled;\nvoid fragment(){ ALBEDO=COLOR.rgb; ROUGHNESS=1.0; EMISSION=COLOR.rgb*0.12; }")
 	m.surface_set_material(0, mt)
 	return m
@@ -489,7 +489,7 @@ func _container_mesh() -> Mesh:
 		_quad(st, Vector3(sg * hx, 0, -hz), Vector3(sg * hx, 0, hz), Vector3(sg * hx, h, hz), Vector3(sg * hx, h, -hz), Vector3(sg, 0, 0), Color(0.85, 0.85, 0.85))
 	_quad(st, Vector3(-hx, h, -hz), Vector3(hx, h, -hz), Vector3(hx, h, hz), Vector3(-hx, h, hz), Vector3.UP, Color(0.9, 0.9, 0.9))
 	var m := st.commit()
-	m.surface_set_material(0, Mats.make("vcol", Mats.VCOL, {"rough": 0.6, "spec": 0.35}))
+	m.surface_set_material(0, Mats.make("vcol", Mats.VCOL, {"rough": 0.6, "spec": 0.35, "raw": 1.0}))
 	return m
 
 # ------------------------------------------------------------------ 可撞飞道具
