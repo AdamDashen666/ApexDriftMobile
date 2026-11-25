@@ -141,7 +141,7 @@ render_mode diffuse_lambert, specular_disabled;
 uniform sampler2D detail : filter_linear_mipmap, repeat_enable;
 varying vec3 wp;
 void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
-void fragment() { ALBEDO = pow(COLOR.rgb, vec3(2.2)) * (0.62 + texture(detail, wp.xz * 0.25).r * 0.75); ROUGHNESS = 0.9; }
+void fragment() { ALBEDO = max(pow(COLOR.rgb, vec3(2.2)), vec3(0.058)) * (0.62 + texture(detail, wp.xz * 0.25).r * 0.75); ROUGHNESS = 0.9; }
 """
 
 const WATER := """

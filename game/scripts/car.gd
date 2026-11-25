@@ -175,10 +175,10 @@ func set_car(i: int, paint: int) -> void:
 		add_child(blob)
 	if head_l == null:
 		head_l = SpotLight3D.new()
-		head_l.spot_range = 70.0
+		head_l.spot_range = 95.0
 		head_l.spot_angle = 36.0
 		head_l.spot_attenuation = 0.5
-		head_l.light_energy = 16.0
+		head_l.light_energy = 24.0
 		head_l.light_color = Color(1.0, 0.95, 0.86)
 		head_l.shadow_enabled = false
 		head_l.top_level = true
@@ -808,7 +808,7 @@ func _process(dt: float) -> void:
 	else:
 		blob.visible = false
 	if head_l and head_l.visible:
-		head_l.global_transform = Transform3D(xf.basis * Basis(Vector3.UP, -PI * 0.5), xf * Vector3(0.6, 2.3, 0)) * Transform3D(Basis(Vector3.RIGHT, -0.17), Vector3.ZERO)
+		head_l.global_transform = Transform3D(xf.basis * Basis(Vector3.UP, -PI * 0.5), xf * Vector3(-0.8, 5.6, 0)) * Transform3D(Basis(Vector3.RIGHT, -0.25), Vector3.ZERO)
 	if mats.has("Tail"):
 		var e := 2.6 if in_brake > 0.1 and not locked else 0.55
 		mats["Tail"].emission_energy_multiplier = lerpf(mats["Tail"].emission_energy_multiplier, e, 1.0 - exp(-20.0 * dt))

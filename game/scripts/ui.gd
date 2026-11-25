@@ -271,7 +271,7 @@ func _txt(f: Font, s: String, p: Vector2, sz: int, c: Color, al := HORIZONTAL_AL
 		var tw := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
 		x = p.x - (tw if al == HORIZONTAL_ALIGNMENT_RIGHT else tw * 0.5)
 	if ol.a > 0.0:
-		draw_string_outline(f, Vector2(x, p.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, 5, ol)
+		draw_string_outline(f, Vector2(x, p.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, clampi(int(sz * 0.17), 2, 6), ol)
 	draw_string(f, Vector2(x, p.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, c)
 
 func _skew(r: Rect2, c: Color, k := 0.18) -> void:
