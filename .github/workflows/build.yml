@@ -60,7 +60,7 @@ jobs:
       - name: Logic tests
         run: |
           set +e
-          timeout 900 ~/godot/godot --headless --path game -- --autotest > "$OUT/test.log" 2>&1
+          timeout 900 ~/godot/godot --headless --path game --fixed-fps 120 -- --autotest > "$OUT/test.log" 2>&1
           code=$?
           tail -120 "$OUT/test.log"
           if grep -q -E "SCRIPT ERROR|Parse Error" "$OUT/test.log"; then echo "::error::脚本报错"; exit 1; fi
@@ -72,7 +72,7 @@ jobs:
           mkdir -p "$OUT/shots"
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)
           timeout 1200 xvfb-run -a -s "-screen 0 1440x900x24" ~/godot/godot --path game --rendering-method mobile --rendering-driver vulkan \
-            --resolution 1334x616 -- --shots="$OUT/shots" > "$OUT/shots.log" 2>&1 || true
+            --resolution 1334x616 --fixed-fps 60 -- --shots="$OUT/shots" > "$OUT/shots.log" 2>&1 || true
           grep -E "SCRIPT ERROR|ERROR|\[APEX\]" "$OUT/shots.log" | head -60 || true
           ls "$OUT/shots"
 
