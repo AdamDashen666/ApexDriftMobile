@@ -301,6 +301,7 @@ func _draw_loading() -> void:
 		_skew(Rect2(c.x - 250 + k * 20, c.y - 46, 10, 52), Color(accent, 1.0 - 0.3 * k), 0.34)
 	_txt(f_num, "APEX DRIFT", c + Vector2(-180, 4), 72, PAPER)
 	_txt(f_zh, msg + "…", c + Vector2(0, 60), 24, Color(PAPER, 0.75), HORIZONTAL_ALIGNMENT_CENTER)
+	_txt(f_body, "首次启动要编译画面着色器，可能要等十几秒，之后会很快", c + Vector2(0, 96), 15, Color(PAPER, 0.5), HORIZONTAL_ALIGNMENT_CENTER)
 
 func _draw_hud() -> void:
 	var w := size.x

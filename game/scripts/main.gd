@@ -635,7 +635,9 @@ func _bench() -> void:
 	sfx.enabled = false
 	Save.sound = false
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
-	perf.fixed_scale = perf.hi
+	# 3D 像素数对齐 iPhone 均衡档（约 1731x800）
+	var ws := DisplayServer.window_get_size()
+	perf.fixed_scale = clampf(sqrt(1385000.0 / float(ws.x * ws.y)), 0.5, 2.0)
 	perf.apply()
 	var rid := get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(rid, true)
@@ -651,8 +653,6 @@ func _bench() -> void:
 		for i in 90:
 			await get_tree().process_frame
 		var dts: Array[float] = []
-		var cpu := 0.0
-		var phy := 0.0
 		var rc := 0.0
 		var rg := 0.0
 		var t0 := Time.get_ticks_usec()
@@ -662,8 +662,6 @@ func _bench() -> void:
 			var now := Time.get_ticks_usec()
 			dts.append((now - last) / 1000.0)
 			last = now
-			cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
-			phy += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 			rc += RenderingServer.viewport_get_measured_render_time_cpu(rid) + RenderingServer.get_frame_setup_time_cpu()
 			rg += RenderingServer.viewport_get_measured_render_time_gpu(rid)
 		var n := dts.size()
@@ -671,7 +669,7 @@ func _bench() -> void:
 		for d in dts:
 			sum += d
 		dts.sort()
-		print("[BENCH] %s 帧数 %d 平均 %.2fms(%.0ffps) 中位 %.2f 99%% %.2f 最差 %.1f | 脚本 %.2f 物理 %.2f 渲染CPU %.2f GPU %.2f | 窗口 %s 3D 比例 %.2f draws %d" % [GameData.MAPS[mi]["id"], n, sum / n, 1000.0 * n / sum, dts[n / 2], dts[int(n * 0.99)], dts[n - 1], cpu / n, phy / n, rc / n, rg / n, str(DisplayServer.window_get_size()), perf.fixed_scale, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))])
+		print("[BENCH] %s 帧数 %d 平均 %.2fms(%.0ffps) 中位 %.2f 99%% %.2f 最差 %.1f | 渲染CPU %.2f GPU %.2f | 窗口 %s 3D 比例 %.2f draws %d" % [GameData.MAPS[mi]["id"], n, sum / n, 1000.0 * n / sum, dts[n / 2], dts[int(n * 0.99)], dts[n - 1], rc / n, rg / n, str(DisplayServer.window_get_size()), perf.fixed_scale, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))])
 		car.stop_auto(false)
 	get_tree().quit(0)
 

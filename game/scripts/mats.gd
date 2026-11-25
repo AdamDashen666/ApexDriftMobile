@@ -20,7 +20,7 @@ static func tex(name: String) -> Texture2D:
 const ROAD := """
 shader_type spatial;
 render_mode diffuse_lambert, specular_schlick_ggx;
-uniform sampler2D detail : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D detail : filter_linear_mipmap, repeat_enable;
 uniform sampler2D macro_t : filter_linear_mipmap, repeat_enable;
 uniform float wet = 0.0;
 uniform float center_dash = 1.0;
@@ -89,7 +89,7 @@ void fragment() {
 const PAD := """
 shader_type spatial;
 render_mode diffuse_lambert, specular_schlick_ggx;
-uniform sampler2D detail : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D detail : filter_linear_mipmap, repeat_enable;
 uniform sampler2D macro_t : filter_linear_mipmap, repeat_enable;
 void fragment() {
 	// UV = 世界坐标 / 10

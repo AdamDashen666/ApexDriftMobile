@@ -17,7 +17,8 @@ run/delta_smoothing=true
 [audio]
 
 driver/mix_rate=44100
-general/ios/session_category=1
+general/ios/session_category=3
+general/ios/mix_with_others=true
 
 [display]
 

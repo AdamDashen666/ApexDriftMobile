@@ -179,8 +179,6 @@ jobs:
       # Godot 官方 iOS 模板的模拟器库只有 x86_64，且模拟器不支持 Mobile/Metal 渲染器，所以改在 macOS 上
       # 用同一套 Mobile 渲染器 + Metal 驱动跑真画面（着色器走 Metal 编译），再关垂直同步跑一遍分。
       - name: Metal run on macOS
-        if: success() || failure()
-        continue-on-error: true
         run: |
           G=~/godot/Godot.app/Contents/MacOS/Godot
           system_profiler SPDisplaysDataType | head -20; sysctl -n machdep.cpu.brand_string
@@ -191,6 +189,8 @@ jobs:
           run 200 "$OUT/logs/metal-bench.log" "$G" --path game --rendering-method mobile --rendering-driver metal --resolution 1920x1080 -- --bench
           grep -E "\[BENCH\]|\[APEX\]|ERROR" "$OUT/logs/metal-bench.log" | head -30 || true
           mkdir -p "$OUT/logs/crashes"; find ~/Library/Logs/DiagnosticReports -name "Godot*" -exec cp {} "$OUT/logs/crashes/" \; 2>/dev/null || true
+          grep -q "shot ui_pause" "$OUT/logs/metal-shots.log" || { echo "::error::Metal 截图没跑完"; exit 1; }
+          if grep -q -E "Failed to compile Metal library|out of bounds" "$OUT/logs/metal-shots.log"; then echo "::error::有着色器在 Metal 上编译不过"; exit 1; fi
 
       - uses: actions/upload-artifact@v6
         if: always()
