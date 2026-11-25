@@ -75,6 +75,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	load_map(Save.map)
 	goto_menu()
+	Save.store()
 
 func free_map() -> bool:
 	return world != null and world.meta.get("free", false)
@@ -128,7 +129,7 @@ func goto_menu() -> void:
 	place_at_start()
 	score.reset()
 	if world.dyn_bodies.size() > 0:
-		world.reset_props()
+		_reset_props()
 	fx.clear()
 	cam.orbit = true
 	sfx.set_engine(false)
@@ -143,7 +144,7 @@ func start_race(auto: bool) -> void:
 	Engine.time_scale = 1.0
 	place_at_start()
 	if world.dyn_bodies.size() > 0:
-		world.reset_props()
+		_reset_props()
 	fx.clear()
 	score.reset()
 	car.assist = Save.assist
@@ -240,7 +241,7 @@ func _auto_finished() -> void:
 	cam.director = false
 	place_at_start()
 	if world.dyn_bodies.size() > 0:
-		world.reset_props()
+		_reset_props()
 	score.reset()
 	ui.show_callout("自动漂移完成 %s · 360° x%d" % [Score.fmt_time(lap), sp], 1)
 
@@ -254,6 +255,15 @@ func _finish() -> void:
 	car.locked = true
 	sfx.set_engine(false)
 
+# 车可能正压在道具上：先复位一次，等车真正挪走（两个物理帧）再复位一次
+func _reset_props() -> void:
+	var w := world
+	w.reset_props()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if is_instance_valid(w) and w == world:
+		w.reset_props()
+
 func reset_car() -> void:
 	var now := Time.get_ticks_msec() * 0.001
 	if car.auto != null:
@@ -264,7 +274,7 @@ func reset_car() -> void:
 		if now - last_reset < 1.2:
 			last_reset = -10.0
 			place_at_start()
-			world.reset_props()
+			_reset_props()
 			return
 		last_reset = now
 		var p := car.global_position
@@ -562,11 +572,42 @@ func _autotest() -> void:
 	await hold(3.0, 1, 0, 0, false)
 	var mv := world.moved_props()
 	_ck(still == 0 and mv >= 6 and car.global_transform.basis.y.y > 0.8, "撞箱墙：静置移动 %d，撞动 %d，车速 %.0f 竖直 %.2f" % [still, mv, car.kmh, car.global_transform.basis.y.y])
-	car.teleport(Vector3(-290, 0.1, -345), 0.0)
-	await ticks(2)
-	world.reset_props()
-	await ticks(40)
-	_ck(world.moved_props() == 0, "道具复原 %d" % world.moved_props())
+	# 车还压在箱堆里，走真实的“连按两次复位”
+	car.teleport(Vector3(125, 0.1, -10), 0.0)
+	await ticks(30)
+	st = St.PLAY
+	_on_action("reset")
+	await ticks(4)
+	_on_action("reset")
+	await ticks(60)
+	_ck(world.moved_props() == 0, "连按两次复位：道具复原 %d" % world.moved_props())
+	_ck(car.global_position.distance_to(Vector3(125, 0.1, -10)) > 20.0, "连按两次复位：回到起点 %s" % str(car.global_position))
+	# 存档写读一遍（平时测试不落盘）
+	var keep := [Save.map, Save.car, Save.paints.duplicate(), Save.weather.duplicate(), Save.best.duplicate(), Save.steer_sens]
+	Save.persist = true
+	Save.path = "user://apex_test.cfg"
+	Save.map = 2
+	Save.car = 3
+	Save.paints[3] = 6
+	Save.weather[2] = 1
+	Save.steer_sens = 1.35
+	Save.best = {"FujiSakura_0": 12345.0}
+	Save.store()
+	Save.map = 0
+	Save.car = 0
+	Save.paints = [0, 0, 0, 0, 0, 0, 0]
+	Save.weather = [0, 0, 0, 0]
+	Save.best = {}
+	Save.steer_sens = 1.0
+	Save.load_cfg()
+	_ck(Save.map == 2 and Save.car == 3 and int(Save.paints[3]) == 6 and int(Save.weather[2]) == 1 and is_equal_approx(Save.steer_sens, 1.35) and is_equal_approx(float(Save.best.get("FujiSakura_0", 0.0)), 12345.0), "存档写读")
+	Save.persist = false
+	Save.map = keep[0]
+	Save.car = keep[1]
+	Save.paints = keep[2]
+	Save.weather = keep[3]
+	Save.best = keep[4]
+	Save.steer_sens = keep[5]
 	# 界面：所有按钮走一遍
 	external = false
 	for sid in ["help", "back", "settings", "credits", "back2", "set_steer:1", "set_steer:2", "set_steer:0", "set_gas:1", "set_gas:0", "set_q:0", "set_q:2", "set_q:1", "set_fps:0", "set_fps:1", "set_hap:0", "set_hap:1", "back", "car:1", "car:-1", "paint:3", "mode:1", "mode:0", "assist:2", "assist:0", "weather:1", "weather:2", "weather:0"]:

@@ -67,6 +67,15 @@ jobs:
           if grep -q -E "SCRIPT ERROR|Parse Error" "$OUT/test.log"; then echo "::error::脚本报错"; exit 1; fi
           grep -q "AUTOTEST PASS" "$OUT/test.log" || { echo "::error::测试没通过（退出码 $code）"; exit 1; }
 
+      # 不带任何测试参数，走真正的启动流程（读写存档、载图、进菜单），连开两次：第二次会读到第一次的存档
+      - name: Normal startup
+        run: |
+          for n in 1 2; do
+            timeout 180 ~/godot/godot --headless --path game --quit-after 400 > "$OUT/startup$n.log" 2>&1 || { tail -20 "$OUT/startup$n.log"; echo "::error::正常启动失败"; exit 1; }
+            if grep -q -E "SCRIPT ERROR|Parse Error|缺文件" "$OUT/startup$n.log"; then cat "$OUT/startup$n.log" | head -40; echo "::error::正常启动有脚本错误"; exit 1; fi
+            grep -E "\[APEX\]" "$OUT/startup$n.log"
+          done
+
       - name: Screenshots
         if: success() || failure()
         run: |
@@ -186,6 +195,10 @@ jobs:
           run() { local lim=$1 log=$2; shift 2; "$@" > "$log" 2>&1 & local p=$!; for i in $(seq 1 $lim); do sleep 1; kill -0 $p 2>/dev/null || break; done; kill -9 $p 2>/dev/null || true; }
           run 420 "$OUT/logs/metal-shots.log" "$G" --path game --rendering-method mobile --rendering-driver metal --resolution 1334x616 --fixed-fps 60 -- --shots="$OUT/screenshots/metal"
           grep -E "\[APEX\]|ERROR|SHADER|SCRIPT" "$OUT/logs/metal-shots.log" | head -50 || true
+          # 直接跑导出的 pck（和 IPA 里的是同一份），确认资源打全了
+          mkdir -p "$OUT/screenshots/pck"; ls -la build/ios/*.pck "$DEVICE_APP"/*.pck || true
+          run 300 "$OUT/logs/metal-pck.log" "$G" --main-pack "$DEVICE_APP/ApexDrift.pck" --rendering-method mobile --rendering-driver metal --resolution 1334x616 --fixed-fps 60 -- --shots="$OUT/screenshots/pck"
+          grep -E "\[APEX\]|ERROR|SCRIPT" "$OUT/logs/metal-pck.log" | head -40 || true
           run 200 "$OUT/logs/metal-bench.log" "$G" --path game --rendering-method mobile --rendering-driver metal --resolution 1920x1080 -- --bench
           grep -E "\[BENCH\]|\[APEX\]|ERROR" "$OUT/logs/metal-bench.log" | head -30 || true
           mkdir -p "$OUT/logs/crashes"; find ~/Library/Logs/DiagnosticReports -name "Godot*" -exec cp {} "$OUT/logs/crashes/" \; 2>/dev/null || true
