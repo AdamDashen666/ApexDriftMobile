@@ -602,6 +602,9 @@ func set_weather(idx: int) -> void:
 	sm.set_shader_parameter("gain", float(wx["sky_gain"]))
 	sm.set_shader_parameter("sun_az", y + PI)
 	sm.set_shader_parameter("horizon", wx["fog"])
+	sm.set_shader_parameter("haze", float(wx["haze"]))
+	sm.set_shader_parameter("haze_k", 0.96 if float(wx["haze"]) > 0.3 else 0.75)
+	sm.set_shader_parameter("warm", float(wx["warm"]))
 	var sky := Sky.new()
 	sky.sky_material = sm
 	sky.radiance_size = Sky.RADIANCE_SIZE_128

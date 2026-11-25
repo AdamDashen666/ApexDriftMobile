@@ -360,6 +360,8 @@ func _on_action(id: String) -> void:
 			ui.back_to = ui.screen
 			ui.screen = "help"
 		"back": ui.screen = ui.back_to
+		"credits": ui.screen = "credits"
+		"back2": ui.screen = "settings"
 		"pause": _set_paused(true)
 		"resume": _set_paused(false)
 		"restart": start_race(false)
@@ -564,7 +566,7 @@ func _autotest() -> void:
 	_ck(world.moved_props() == 0, "道具复原 %d" % world.moved_props())
 	# 界面：所有按钮走一遍
 	external = false
-	for sid in ["help", "back", "settings", "set_steer:1", "set_steer:2", "set_steer:0", "set_gas:1", "set_gas:0", "set_q:0", "set_q:2", "set_q:1", "set_fps:0", "set_fps:1", "set_hap:0", "set_hap:1", "back", "car:1", "car:-1", "paint:3", "mode:1", "mode:0", "assist:2", "assist:0", "weather:1", "weather:2", "weather:0"]:
+	for sid in ["help", "back", "settings", "credits", "back2", "set_steer:1", "set_steer:2", "set_steer:0", "set_gas:1", "set_gas:0", "set_q:0", "set_q:2", "set_q:1", "set_fps:0", "set_fps:1", "set_hap:0", "set_hap:1", "back", "car:1", "car:-1", "paint:3", "mode:1", "mode:0", "assist:2", "assist:0", "weather:1", "weather:2", "weather:0"]:
 		_on_action(sid)
 		await ticks(2)
 	_on_action("map:0")
@@ -707,6 +709,8 @@ func _shots(dir: String) -> void:
 	await _cap(dir, "ui_settings", 3)
 	ui.screen = "help"
 	await _cap(dir, "ui_help", 3)
+	ui.screen = "credits"
+	await _cap(dir, "ui_credits", 3)
 	ui.screen = "pause"
 	await _cap(dir, "ui_pause", 3)
 	get_tree().quit(0)

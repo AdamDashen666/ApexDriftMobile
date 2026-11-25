@@ -1,0 +1,26 @@
+APEX DRIFT 移动版 素材署名与许可
+
+引擎
+Godot Engine，MIT 许可，© 2014-present Godot Engine contributors，© 2007-2014 Juan Linietsky, Ariel Manzur
+https://godotengine.org/license
+
+车辆（车名均为虚构；已修改：减面、拆件、重分材质、去除原有文字与标志、新增灯具和车牌）
+APEX GT：“Sportscar” by Yasutoshi Mori (@MirageYM)，CC BY 2.0，github.com/mmp/pbrt-v4-scenes
+ONYX：“Concept Car 040” by Unity Fan (unityfan777)，作者声明 CC0，Sketchfab 记录 CC BY 4.0
+EMBER：“Concept Car 039” by Unity Fan (unityfan777)，作者声明 CC0，Sketchfab 记录 CC BY 4.0
+VELA：“Car Concept” © 2023 Darmstadt Graphics Group GmbH / Eric Chadwick，CC BY 4.0，原型为 Unity Fan 的 Concept Car 004
+SELVA：“Selva Hypercar concept 2019” by maxhordin，CC BY 4.0
+IRONCLAD：“Muscle Car Concept” by ViktorKom，CC BY 4.0
+RUSTBELT：“Hot Rod Pickup” by kird3rf，CC BY 4.0
+许可全文：creativecommons.org/licenses/by/2.0  creativecommons.org/licenses/by/4.0
+
+地形高程
+AWS Terrain Tiles（Mapzen / Tilezen），数据含 SRTM、JAXA、GSI 等公开来源
+
+天空、地表与木石贴图
+Poly Haven、ambientCG，CC0
+
+字体（SIL Open Font License 1.1）
+Barlow Condensed、Noto Sans SC、Smiley Sans（得意黑）
+
+其余模型、音效、界面与地图均为原创或程序生成，车牌、地名为虚构，不指代任何真实厂商或赛事。

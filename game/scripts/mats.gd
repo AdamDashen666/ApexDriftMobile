@@ -182,7 +182,7 @@ void fragment() {
 	vec4 t = texture(tex, UV);
 	ALBEDO = t.rgb * tint * COLOR.rgb;
 	if (!FRONT_FACING) NORMAL = -NORMAL;
-	ALPHA = t.a * (1.0 + max(0.0, textureQueryLod(tex, UV).x) * 0.22);
+	ALPHA = t.a * (1.0 + max(0.0, 0.5 * log2(max(dot(dFdx(UV) * vec2(textureSize(tex, 0)), dFdx(UV) * vec2(textureSize(tex, 0))), 0.0001))) * 0.22);
 	ALPHA_SCISSOR_THRESHOLD = 0.42;
 	ROUGHNESS = 1.0;
 	BACKLIGHT = t.rgb * tint * 0.25;
@@ -202,7 +202,7 @@ void fragment() {
 	vec4 t = texture(tex, UV);
 	ALBEDO = t.rgb * gain * COLOR.rgb;
 	if (!FRONT_FACING) NORMAL = -NORMAL;
-	ALPHA = t.a * (1.0 + max(0.0, textureQueryLod(tex, UV).x) * 0.25);
+	ALPHA = t.a * (1.0 + max(0.0, 0.5 * log2(max(dot(dFdx(UV) * vec2(textureSize(tex, 0)), dFdx(UV) * vec2(textureSize(tex, 0))), 0.0001))) * 0.25);
 	ALPHA_SCISSOR_THRESHOLD = 0.38;
 	ROUGHNESS = 1.0;
 }
@@ -274,17 +274,24 @@ uniform float k = 1.0;
 uniform float gain = 1.0;
 uniform float sun_az = 0.0;
 uniform vec3 horizon : source_color = vec3(0.6, 0.75, 0.95);
+uniform float haze = 0.10;
+uniform float haze_k = 0.75;
+uniform float warm = 0.0;
 void sky() {
 	float az = atan(EYEDIR.z, EYEDIR.x);
 	float u = fract(0.5 + (az - sun_az) / 6.2831853);
 	float v = acos(clamp(EYEDIR.y, -1.0, 1.0)) / 3.14159265;
 	if (AT_CUBEMAP_PASS) {
-		COLOR = textureLod(lo, vec2(u, v), 0.0).rgb * gain;
+		COLOR = textureLod(lo, vec2(fract(u + 0.25), v), 0.0).rgb * gain;
 	} else {
 		vec3 c = textureLod(hi, vec2(u, min(v / 0.56, 0.995)), 0.0).rgb;
 		c = pow(c, vec3(2.2)) * k * gain;
-		float h = smoothstep(0.10, -0.02, EYEDIR.y);
-		COLOR = mix(c, horizon, h * 0.75);
+		float g = (0.5 + 0.5 * cos(az - sun_az));
+		g = g * g * smoothstep(0.62, 0.0, EYEDIR.y) + 0.35 * smoothstep(0.25, 0.0, EYEDIR.y);
+		float l = max(dot(c, vec3(0.3, 0.6, 0.1)), 0.30);
+		c = mix(c, vec3(1.55, 0.78, 0.36) * l, clamp(g * warm, 0.0, 0.85));
+		float h = smoothstep(haze, -0.02, EYEDIR.y);
+		COLOR = mix(c, horizon, h * haze_k);
 	}
 }
 """

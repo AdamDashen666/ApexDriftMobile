@@ -9,6 +9,7 @@ var f_zh: Font
 var f_num: Font
 var f_num2: Font
 var f_body: Font
+var credits := PackedStringArray()
 var screen := "loading"      # loading menu play settings pause result help
 var back_to := "menu"
 var accent := Color(1, 0.5, 0.2)
@@ -265,7 +266,7 @@ func _b(id: String, r: Rect2) -> bool:
 
 func _txt(f: Font, s: String, p: Vector2, sz: int, c: Color, al := HORIZONTAL_ALIGNMENT_LEFT, w := -1.0) -> void:
 	var x := p.x
-	var ol := Color(0, 0, 0, 0.55 * c.a) if screen == "play" and c.v > 0.4 else Color(0, 0, 0, 0)
+	var ol := Color(0, 0, 0, 0.55 * c.a) if (screen == "play" or screen == "menu") and c.v > 0.4 else Color(0, 0, 0, 0)
 	if w < 0.0 and al != HORIZONTAL_ALIGNMENT_LEFT:
 		var tw := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
 		x = p.x - (tw if al == HORIZONTAL_ALIGNMENT_RIGHT else tw * 0.5)
@@ -291,6 +292,7 @@ func _draw() -> void:
 		"pause": _draw_pause()
 		"result": _draw_result()
 		"help": _draw_help()
+		"credits": _draw_credits()
 
 func _draw_loading() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.03, 0.04))
@@ -475,7 +477,10 @@ func _seg(id: String, items: Array, sel: int, r: Rect2, gap := 8.0) -> void:
 		var q := Rect2(r.position.x + i * (w + gap), r.position.y, w, r.size.y)
 		var dn := _b("%s:%d" % [id, i], q)
 		_skew(q, PAPER if i == sel else Color(1, 1, 1, 0.22 if dn else 0.10), 0.16)
-		_txt(f_zh, items[i], q.get_center() + Vector2(3, 7), 19, INK if i == sel else PAPER, HORIZONTAL_ALIGNMENT_CENTER)
+		var fs := 19
+		while fs > 12 and f_zh.get_string_size(items[i], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > w - 12.0:
+			fs -= 1
+		_txt(f_zh, items[i], q.get_center() + Vector2(3, 7), fs, INK if i == sel else PAPER, HORIZONTAL_ALIGNMENT_CENTER)
 
 func _draw_menu() -> void:
 	var w := size.x
@@ -484,7 +489,7 @@ func _draw_menu() -> void:
 	# 压暗
 	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(w * 0.5, 0), Vector2(w * 0.34, h), Vector2(0, h)]), PackedColorArray([Color(INK, 0.78), Color(INK, 0.0), Color(INK, 0.0), Color(INK, 0.78)]))
 	draw_polygon(PackedVector2Array([Vector2(0, h - 290), Vector2(w, h - 290), Vector2(w, h), Vector2(0, h)]), PackedColorArray([Color(INK, 0.0), Color(INK, 0.0), Color(INK, 0.92), Color(INK, 0.92)]))
-	draw_polygon(PackedVector2Array([Vector2(w - 420, 0), Vector2(w, 0), Vector2(w, h), Vector2(w - 360, h)]), PackedColorArray([Color(INK, 0.0), Color(INK, 0.72), Color(INK, 0.72), Color(INK, 0.0)]))
+	draw_polygon(PackedVector2Array([Vector2(w - 420, 0), Vector2(w, 0), Vector2(w, h), Vector2(w - 360, h)]), PackedColorArray([Color(INK, 0.35), Color(INK, 0.86), Color(INK, 0.86), Color(INK, 0.35)]))
 	var x := safe_l + 6
 	for k in 3:
 		_skew(Rect2(x + k * 11, 20, 6, 32), Color(accent, 1.0 - 0.3 * k), 0.34)
@@ -550,12 +555,13 @@ func _draw_menu() -> void:
 	# 选项
 	var ow := 4 * cw + 36
 	var oy := cy - 56
-	_seg("weather", m["weathers"], Save.weather[Save.map], Rect2(x, oy, ow * 0.46, 40))
-	_seg("mode", GameData.MODES, Save.mode, Rect2(x + ow * 0.49, oy, ow * 0.23, 40))
-	_seg("assist", GameData.ASSISTS, Save.assist, Rect2(x + ow * 0.75, oy, ow * 0.25, 40))
-	_txt(f_body, "天气", Vector2(x, oy - 8), 13, Color(PAPER, 0.6))
-	_txt(f_body, "模式", Vector2(x + ow * 0.49, oy - 8), 13, Color(PAPER, 0.6))
-	_txt(f_body, "操控手感", Vector2(x + ow * 0.75, oy - 8), 13, Color(PAPER, 0.6))
+	draw_rect(Rect2(x - 12, oy - 26, ow + 30, 74), Color(INK, 0.45))
+	_seg("weather", m["weathers"], Save.weather[Save.map], Rect2(x, oy, ow * 0.42, 40))
+	_seg("mode", GameData.MODES, Save.mode, Rect2(x + ow * 0.445, oy, ow * 0.29, 40))
+	_seg("assist", GameData.ASSISTS, Save.assist, Rect2(x + ow * 0.76, oy, ow * 0.24, 40))
+	_txt(f_body, "天气", Vector2(x, oy - 8), 14, Color(PAPER, 0.9))
+	_txt(f_body, "模式", Vector2(x + ow * 0.445, oy - 8), 14, Color(PAPER, 0.9))
+	_txt(f_body, "操控手感", Vector2(x + ow * 0.76, oy - 8), 14, Color(PAPER, 0.9))
 	# 开始
 	var sr := Rect2(rx - 300, h - 128 - safe_b, 278, 72)
 	var sd := _b("start", sr)
@@ -609,6 +615,9 @@ func _draw_settings() -> void:
 	var br := Rect2(x, h - 62 - safe_b, 160, 46)
 	_skew(br, accent if _b("back", br) else PAPER)
 	_txt(f_zh, "返回", br.get_center() + Vector2(4, 9), 24, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	var kr := Rect2(x + 190, h - 62 - safe_b, 160, 46)
+	_skew(kr, Color(1, 1, 1, 0.3 if _b("credits", kr) else 0.14))
+	_txt(f_zh, "素材署名", kr.get_center() + Vector2(4, 9), 22, PAPER, HORIZONTAL_ALIGNMENT_CENTER)
 	var p: Perf = main.perf
 	_txt(f_body, "屏幕刷新率 %d Hz · 不限制帧率 · 当前渲染分辨率 %d%%" % [int(p.target), int(p.scale * 100.0 + 0.5)], Vector2(w - safe_r - 20, h - 34 - safe_b), 14, Color(PAPER, 0.6), HORIZONTAL_ALIGNMENT_RIGHT)
 
@@ -635,6 +644,28 @@ func _draw_result() -> void:
 	_txt(f_body, "最佳单次 %s    最大角度 %d°" % [Score.fmt_num(int(result.get("best", 0))), int(result.get("peak", 0))], c + Vector2(0, 6), 20, Color(PAPER, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
 	_big("restart", "再来一次", Rect2(c.x - 300, c.y + 60, 280, 60), true)
 	_big("menu", "返回菜单", Rect2(c.x + 20, c.y + 60, 280, 60))
+
+func _draw_credits() -> void:
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.03, 0.95))
+	var x := maxf(safe_l + 20, 40.0)
+	_txt(f_zh, "素材署名与许可", Vector2(x, 46), 32, PAPER)
+	if credits.is_empty():
+		var f := FileAccess.open("res://CREDITS.txt", FileAccess.READ)
+		credits = f.get_as_text().split("\n") if f else PackedStringArray(["缺少 CREDITS.txt"])
+	var y := 78.0
+	for i in range(1, credits.size()):
+		var s := credits[i].strip_edges()
+		if s == "":
+			y += 5.0
+			continue
+		var fs := 14
+		while fs > 9 and f_body.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > size.x - x - safe_r - 16.0:
+			fs -= 1
+		_txt(f_body, s, Vector2(x, y), fs, Color(PAPER, 0.88))
+		y += 18.0
+	var br := Rect2(size.x - safe_r - 190, 14, 160, 42)
+	_skew(br, accent if _b("back2", br) else PAPER)
+	_txt(f_zh, "返回", br.get_center() + Vector2(4, 9), 24, INK, HORIZONTAL_ALIGNMENT_CENTER)
 
 func _draw_help() -> void:
 	var h := size.y

@@ -52,14 +52,14 @@ static func map_index(id: String) -> int:
 
 static func weather(map_id: String, idx: int) -> Dictionary:
 	# pitch/yaw：太阳光行进方向（度）
-	var w := {"pitch": -47.0, "yaw": -80.0, "color": Color(1, 0.955, 0.885), "energy": 1.55, "sky": "FujiClear", "sky_gain": 1.0, "ambient": 1.0, "fog": Color(0.62, 0.78, 1.0), "fog_d": 0.00006, "exposure": 1.0, "wet": 0.0, "night": false, "petals": 1.0, "sat": 1.08}
+	var w := {"pitch": -47.0, "yaw": -80.0, "color": Color(1, 0.955, 0.885), "energy": 1.55, "sky": "FujiClear", "sky_gain": 1.0, "ambient": 1.0, "fog": Color(0.62, 0.78, 1.0), "fog_d": 0.00006, "exposure": 1.0, "wet": 0.0, "night": false, "petals": 1.0, "sat": 1.08, "haze": 0.10, "warm": 0.0}
 	match map_id:
 		"MomijiTouge":
 			match idx:
 				1:
-					w.merge({"pitch": -20.0, "yaw": 40.0, "color": Color(1.0, 0.86, 0.68), "energy": 1.15, "sky": "MomijiMist", "fog": Color(0.80, 0.84, 0.90), "fog_d": 0.0030, "exposure": 1.0, "wet": 0.35, "petals": 0.4}, true)
+					w.merge({"pitch": -20.0, "yaw": 40.0, "color": Color(1.0, 0.86, 0.68), "energy": 1.15, "sky": "MomijiMist", "fog": Color(0.80, 0.84, 0.90), "fog_d": 0.0030, "exposure": 1.0, "wet": 0.35, "petals": 0.4, "haze": 0.75}, true)
 				2:
-					w.merge({"pitch": -14.0, "yaw": -150.0, "color": Color(1.0, 0.62, 0.34), "energy": 1.5, "sky": "MomijiSunset", "fog": Color(0.62, 0.50, 0.46), "fog_d": 0.00010, "exposure": 1.15, "ambient": 1.15, "petals": 0.8}, true)
+					w.merge({"pitch": -14.0, "yaw": -150.0, "color": Color(1.0, 0.62, 0.34), "energy": 1.5, "sky": "MomijiSunset", "fog": Color(0.62, 0.50, 0.46), "fog_d": 0.00010, "exposure": 1.15, "ambient": 1.15, "petals": 0.8, "warm": 0.7}, true)
 				_:
 					w.merge({"pitch": -36.0, "yaw": 30.0, "color": Color(1.0, 0.93, 0.82), "energy": 1.6, "sky": "MomijiClear", "fog": Color(0.56, 0.66, 0.82), "fog_d": 0.00007, "petals": 0.7}, true)
 		"KuroshioCircuit":
@@ -69,11 +69,11 @@ static func weather(map_id: String, idx: int) -> Dictionary:
 				2:
 					w.merge({"pitch": -40.0, "yaw": -110.0, "color": Color(1.0, 0.96, 0.90), "energy": 1.6, "sky": "FujiClear", "fog": Color(0.50, 0.66, 0.88), "fog_d": 0.00008, "petals": 0.0}, true)
 				_:
-					w.merge({"pitch": -16.0, "yaw": -135.0, "color": Color(1.0, 0.76, 0.50), "energy": 1.5, "sky": "KuroSunset", "fog": Color(0.66, 0.56, 0.54), "fog_d": 0.00009, "ambient": 1.15, "wet": 0.5, "petals": 0.0}, true)
+					w.merge({"pitch": -16.0, "yaw": -135.0, "color": Color(1.0, 0.76, 0.50), "energy": 1.5, "sky": "KuroSunset", "fog": Color(0.66, 0.56, 0.54), "fog_d": 0.00009, "ambient": 1.15, "wet": 0.5, "petals": 0.0, "warm": 1.0, "sky_gain": 0.85}, true)
 		_:
 			match idx:
 				1:
-					w.merge({"pitch": -11.0, "yaw": 82.0, "color": Color(1.0, 0.64, 0.38), "energy": 1.45, "sky": "FujiSunset", "fog": Color(0.62, 0.52, 0.58), "fog_d": 0.00009, "ambient": 1.15, "exposure": 1.1, "petals": 0.85}, true)
+					w.merge({"pitch": -11.0, "yaw": 82.0, "color": Color(1.0, 0.64, 0.38), "energy": 1.45, "sky": "FujiSunset", "fog": Color(0.62, 0.52, 0.58), "fog_d": 0.00009, "ambient": 1.15, "exposure": 1.1, "petals": 0.85, "warm": 0.6}, true)
 				2:
 					if map_id == "TrainingPark":
 						w.merge({"pitch": -60.0, "yaw": -45.0, "color": Color(0.86, 0.92, 1.0), "energy": 0.75, "sky": "KuroNight", "ambient": 1.9, "fog": Color(0.05, 0.08, 0.16), "fog_d": 0.0009, "exposure": 1.25, "night": true, "petals": 0.0}, true)
