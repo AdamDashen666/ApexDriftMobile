@@ -53,7 +53,7 @@ var shift_t := 0.0
 var air_t := 0.0
 var flip_t := 0.0
 var wheel_comp := PackedFloat32Array([0, 0, 0, 0])
-var wheel_hit := [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
+var wheel_hit: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
 var wheel_on := PackedByteArray([0, 0, 0, 0])
 var wheel_rot := PackedFloat32Array([0, 0])
 var wheel_spin_f := 0.0
@@ -89,7 +89,7 @@ var mats: Dictionary = {}
 var blob: MeshInstance3D
 var head_l: SpotLight3D
 var _rp := PhysicsRayQueryParameters3D.new()
-var _wl := [Vector3(1.45, 0, -0.8), Vector3(1.45, 0, 0.8), Vector3(-1.45, 0, -0.8), Vector3(-1.45, 0, 0.8)]
+var _wl: Array[Vector3] = [Vector3(1.45, 0, -0.8), Vector3(1.45, 0, 0.8), Vector3(-1.45, 0, -0.8), Vector3(-1.45, 0, 0.8)]
 
 func _init() -> void:
 	mass = MASS

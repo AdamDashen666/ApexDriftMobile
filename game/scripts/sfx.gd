@@ -66,7 +66,7 @@ func set_engine(on: bool) -> void:
 		else:
 			p.stop()
 
-func _set(k: String, v: float, pitch := 1.0) -> void:
+func _lv(k: String, v: float, pitch := 1.0) -> void:
 	var p: AudioStreamPlayer = loops[k]
 	p.volume_db = linear_to_db(maxf(v * master, 0.0001))
 	p.pitch_scale = clampf(pitch, 0.2, 3.0)
@@ -87,7 +87,7 @@ func _process(_dt: float) -> void:
 			w = clampf((r - 4500.0) / 2000.0, 0.0, 1.0)
 		else:
 			w = clampf(1.0 - absf(r - c) / 2000.0, 0.0, 1.0)
-		_set(ENG[i][0], w * load_v * vol, r / c * pit)
-	_set("off", (1.0 - car.in_throttle) * 0.22 * vol * 2.0, clampf(r / 2000.0, 0.5, 2.6) * pit)
-	_set("tire", car.skid * 0.42 if car.grounded >= 2 else 0.0, 0.85 + 0.2 * clampf(car.kmh / 160.0, 0.0, 1.0))
-	_set("wind", clampf((car.kmh - 60.0) / 240.0, 0.0, 1.0) * 0.35, 0.9 + car.kmh / 600.0)
+		_lv(ENG[i][0], w * load_v * vol, r / c * pit)
+	_lv("off", (1.0 - car.in_throttle) * 0.22 * vol * 2.0, clampf(r / 2000.0, 0.5, 2.6) * pit)
+	_lv("tire", car.skid * 0.42 if car.grounded >= 2 else 0.0, 0.85 + 0.2 * clampf(car.kmh / 160.0, 0.0, 1.0))
+	_lv("wind", clampf((car.kmh - 60.0) / 240.0, 0.0, 1.0) * 0.35, 0.9 + car.kmh / 600.0)

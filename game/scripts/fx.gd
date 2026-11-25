@@ -20,8 +20,7 @@ var s_a := PackedFloat32Array()
 var s_head := 0
 var emit_acc := 0.0
 var k_head := 0
-var last := [Vector3.INF, Vector3.INF, Vector3.INF, Vector3.INF]
-var lastw := [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
+var last: Array[Vector3] = [Vector3.INF, Vector3.INF, Vector3.INF, Vector3.INF]
 var amount := 1.0
 var rng := RandomNumberGenerator.new()
 var alive := 0
@@ -43,8 +42,6 @@ func _ready() -> void:
 	mi.custom_aabb = AABB(Vector3(-6000, -300, -6000), Vector3(12000, 1500, 12000))
 	mi.sorting_offset = 10.0
 	add_child(mi)
-	for a in [s_pos, s_vel]:
-		pass
 	s_pos.resize(SMOKE_N)
 	s_vel.resize(SMOKE_N)
 	s_age.resize(SMOKE_N)
