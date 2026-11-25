@@ -175,10 +175,10 @@ func set_car(i: int, paint: int) -> void:
 		add_child(blob)
 	if head_l == null:
 		head_l = SpotLight3D.new()
-		head_l.spot_range = 55.0
-		head_l.spot_angle = 34.0
-		head_l.spot_attenuation = 0.7
-		head_l.light_energy = 9.0
+		head_l.spot_range = 70.0
+		head_l.spot_angle = 36.0
+		head_l.spot_attenuation = 0.5
+		head_l.light_energy = 16.0
 		head_l.light_color = Color(1.0, 0.95, 0.86)
 		head_l.shadow_enabled = false
 		head_l.top_level = true
@@ -260,6 +260,10 @@ func stop_auto(keep_speed := true) -> void:
 	linear_velocity = v if keep_speed else Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	reset_state()
+	in_throttle = 0.0
+	in_brake = 0.0
+	in_steer = 0.0
+	in_hand = false
 	assist_t = 0.5
 
 # ------------------------------------------------------------------ 物理
@@ -333,9 +337,10 @@ func _integrate_forces(st: PhysicsDirectBodyState3D) -> void:
 		var pv := v + w.cross(rel - xf.basis * center_of_mass)
 		var cv := pv.dot(n)
 		var f := fbase + K_SPRING * comp - C_DAMP * cv
-		if comp > 0.16:
-			f += (comp - 0.16) * 160000.0
-		f = clampf(f, 0.0, MASS * 42.0)
+		if comp > 0.15:
+			# 触底：压缩时硬、回弹时放掉大半，免得坡口把车弹飞
+			f += (comp - 0.15) * (150000.0 if cv < 0.0 else 25000.0)
+		f = clampf(f, 0.0, MASS * 26.0)
 		if f > 0.0:
 			wheel_on[i] = 1
 			grounded += 1
@@ -386,11 +391,9 @@ func _integrate_forces(st: PhysicsDirectBodyState3D) -> void:
 			if sim_air > 0.35:
 				sim_free = false
 		# 空中：角速度收敛，机头慢慢跟上速度方向，落地不容易翻
-		w *= exp(-2.4 * dt)
-		if speed > 8.0:
-			var want := (Vector3.UP * 1.0 + up * 0.0).normalized()
-			var err := up.cross(want)
-			w += err * minf(1.6 * dt, 1.0)
+		w *= exp(-3.6 * dt)
+		var err := up.cross(Vector3.UP)
+		w += err * minf(5.0 * dt, 1.0)
 		st.angular_velocity = w
 		path_rate = lerpf(path_rate, 0.0, 1.0 - exp(-4.0 * dt))
 	_walls(st)
@@ -805,7 +808,7 @@ func _process(dt: float) -> void:
 	else:
 		blob.visible = false
 	if head_l and head_l.visible:
-		head_l.global_transform = Transform3D(xf.basis * Basis(Vector3.UP, -PI * 0.5), xf * Vector3(2.0, 0.62, 0)) * Transform3D(Basis(Vector3.RIGHT, -0.05), Vector3.ZERO)
+		head_l.global_transform = Transform3D(xf.basis * Basis(Vector3.UP, -PI * 0.5), xf * Vector3(0.6, 2.3, 0)) * Transform3D(Basis(Vector3.RIGHT, -0.17), Vector3.ZERO)
 	if mats.has("Tail"):
 		var e := 2.6 if in_brake > 0.1 and not locked else 0.55
 		mats["Tail"].emission_energy_multiplier = lerpf(mats["Tail"].emission_energy_multiplier, e, 1.0 - exp(-20.0 * dt))

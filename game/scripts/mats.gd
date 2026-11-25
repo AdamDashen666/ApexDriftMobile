@@ -31,7 +31,7 @@ void fragment() {
 	float al = abs(lat);
 	float d = texture(detail, UV * vec2(2.6, 2.6)).r;
 	float m = texture(macro_t, UV * vec2(0.31, 0.43)).r;
-	vec3 c = vec3(0.098, 0.099, 0.104) * (0.30 + d * 1.4) * (0.62 + m * 0.76);
+	vec3 c = vec3(0.082, 0.083, 0.088) * (0.30 + d * 1.4) * (0.62 + m * 0.76);
 	float rut = exp(-pow((al - 1.9) / 0.6, 2.0)) + exp(-pow((al - 4.6) / 0.6, 2.0));
 	c *= 1.0 - rut * 0.10;
 	c *= mix(1.0, 0.86, smoothstep(5.8, 7.4, al));
@@ -96,7 +96,7 @@ void fragment() {
 	float d = texture(detail, UV * 1.9).r;
 	float m = texture(macro_t, UV * 0.27).r;
 	float b = texture(macro_t, UV.yx * 0.061).r;
-	vec3 c = vec3(0.150, 0.152, 0.158) * (0.34 + d * 1.32) * (0.68 + m * 0.64) * (0.72 + b * 0.56);
+	vec3 c = vec3(0.128, 0.130, 0.136) * (0.34 + d * 1.32) * (0.68 + m * 0.64) * (0.72 + b * 0.56);
 	vec2 q = (0.5 - abs(fract(UV) - 0.5)) * 10.0;
 	float px = fwidth(UV.x) * 10.0 + fwidth(UV.y) * 10.0;
 	float seam = clamp(1.3 - min(q.x, q.y) / (0.012 + px * 0.6), 0.0, 1.0) * clamp(0.03 / max(px, 0.03), 0.0, 1.0);
@@ -167,9 +167,10 @@ const LEAF := """
 shader_type spatial;
 render_mode cull_disabled, diffuse_lambert_wrap, specular_disabled;
 uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;
-uniform vec3 tint = vec3(1.0);
 uniform float wind = 1.0;
+varying vec3 tint;
 void vertex() {
+	tint = INSTANCE_CUSTOM.r > 0.0 ? INSTANCE_CUSTOM.rgb : vec3(1.0);
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float s = sin(TIME * 1.7 + w.x * 0.35 + w.z * 0.27) + 0.5 * sin(TIME * 3.1 + w.z * 0.8);
 	VERTEX.xz += vec2(s, s * 0.6) * 0.055 * COLOR.a * wind;
@@ -189,7 +190,7 @@ const IMPOSTOR := """
 shader_type spatial;
 render_mode cull_disabled, diffuse_lambert_wrap, specular_disabled;
 uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;
-uniform float gain = 1.12;
+uniform float gain = 1.18;
 void vertex() {
 	vec4 r = INSTANCE_CUSTOM;
 	UV = r.xy + vec2((UV.x * 0.5 + UV2.x * 0.5) * r.z, UV.y * r.w);
@@ -239,6 +240,9 @@ void vertex() {
 	vec3 ctr = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	vec3 v = (VIEW_MATRIX * vec4(ctr, 1.0)).xyz + vec3(q, 0.0);
 	POSITION = PROJECTION_MATRIX * vec4(v, 1.0);
+	// 深度往镜头方向挪，插进路面的那半截不会切出硬边
+	vec4 nearer = PROJECTION_MATRIX * vec4(v.xy, min(v.z + c.w * 0.9, -0.3), 1.0);
+	POSITION.z = nearer.z / nearer.w * POSITION.w;
 	fade = c.y;
 }
 void fragment() {
@@ -261,7 +265,6 @@ void fragment() {
 
 const SKY := """
 shader_type sky;
-render_mode use_half_res_pass;
 uniform sampler2D hi : filter_linear, repeat_enable;
 uniform sampler2D lo : filter_linear, repeat_enable;
 uniform float k = 1.0;

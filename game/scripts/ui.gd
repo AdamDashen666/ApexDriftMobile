@@ -37,15 +37,20 @@ var thumbs: Array = []
 var map_pts := PackedVector2Array()
 var map_min := Vector2.ZERO
 var map_scale := 1.0
-var set_tab := 0
+var mm: Control
+var redraw_acc := 0.0
 var drag_slider := ""
 
 const INK := Color(0.04, 0.04, 0.055)
 const PAPER := Color(0.97, 0.95, 0.91)
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mm = Control.new()
+	mm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mm.draw.connect(_draw_mm)
+	add_child(mm)
 	f_zh = load("res://assets/fonts/SmileySans-Oblique.ttf")
 	f_num = load("res://assets/fonts/BarlowCondensed-ExtraBoldItalic.ttf")
 	f_num2 = load("res://assets/fonts/BarlowCondensed-SemiBoldItalic.ttf")
@@ -80,6 +85,8 @@ func set_map(tr: Track, _meta: Dictionary) -> void:
 		mx = mx.max(p)
 	map_min = (mn + mx) * 0.5
 	map_scale = 1.0 / maxf(mx.x - mn.x, mx.y - mn.y)
+	if mm:
+		mm.queue_redraw()
 
 func show_callout(s: String, k: int) -> void:
 	callout = s
@@ -91,9 +98,16 @@ func _process(dt: float) -> void:
 	callout_t += dt
 	go_t += dt
 	hint_t += dt
+	if size.x < 10.0:
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if screen == "play":
 		_read_controls(dt)
-	queue_redraw()
+	mm.visible = screen == "play"
+	# 触控每帧读，画面 60Hz 重画就够
+	redraw_acc += dt
+	if redraw_acc >= 0.0155:
+		redraw_acc = 0.0
+		queue_redraw()
 
 # ------------------------------------------------------------------ 输入
 func _rects() -> Dictionary:
@@ -425,16 +439,22 @@ func _speedo(c: Vector2, car: Car) -> void:
 	_skew(r, PAPER)
 	_txt(f_num, g, r.get_center() + Vector2(3, 10), 28, INK, HORIZONTAL_ALIGNMENT_CENTER)
 
-func _minimap(c: Vector2, r: float, car: Car) -> void:
-	draw_circle(c, r + 4, Color(INK, 0.5))
+func _draw_mm() -> void:
+	mm.draw_circle(Vector2.ZERO, 62.0, Color(INK, 0.5))
 	if map_pts.is_empty():
 		return
 	var pts := PackedVector2Array()
-	var k := r * 1.62 * map_scale
 	for p in map_pts:
-		pts.append(c + (p - map_min) * k)
+		pts.append((p - map_min) * 58.0 * 1.62 * map_scale)
 	pts.append(pts[0])
-	draw_polyline(pts, Color(PAPER, 0.75), 2.4, true)
+	mm.draw_polyline(pts, Color(PAPER, 0.75), 2.4, true)
+
+func _minimap(c: Vector2, r: float, car: Car) -> void:
+	if mm.position != c:
+		mm.position = c
+	if map_pts.is_empty():
+		return
+	var k := r * 1.62 * map_scale
 	var pos := car.global_position
 	var m := c + (Vector2(pos.z, -pos.x) - map_min) * k
 	if m.distance_to(c) < r + 6.0:

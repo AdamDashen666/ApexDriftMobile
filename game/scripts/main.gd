@@ -471,24 +471,24 @@ func _autotest() -> void:
 			car.set_car(ci, 0)
 			car.assist = asst
 			var tag := "%s/%s" % [GameData.ASSISTS[asst], car.info["name"]]
-			car.teleport(Vector3(-300, 0.1, 20), 0.0, Vector3(30, 0, 0))
+			car.teleport(Vector3(-290, 0.1, -345), 0.0, Vector3(30, 0, 0))
 			await hold(0.3, 1, 0, 0, false)
 			var mx := 0.0
 			for i in 120:
-				car.in_steer = 0.3
+				car.in_steer = -0.3
 				car.in_throttle = 0.8
 				await get_tree().physics_frame
 				mx = maxf(mx, absf(car.beta))
 			_ck(mx < 5.0, "%s 小舵量最大侧滑 %.1f°" % [tag, mx])
 			await hold(0.8, 1, 0, 0, false)
 			_ck(absf(car.beta) < 2.0, "%s 松方向后侧滑 %.1f°" % [tag, car.beta])
-			car.teleport(Vector3(-300, 0.1, 20), 0.0, Vector3(34, 0, 0))
+			car.teleport(Vector3(-290, 0.1, -345), 0.0, Vector3(34, 0, 0))
 			await hold(0.2, 1, 0, 0, false)
 			if asst < 2:
-				await hold(0.35, 1, 0, 1, true)
+				await hold(0.35, 1, 0, -1, true)
 				var mxd := 0.0
 				for i in 240:
-					car.in_steer = 0.8
+					car.in_steer = -0.8
 					car.in_throttle = 1.0
 					car.in_hand = false
 					await get_tree().physics_frame
@@ -666,6 +666,21 @@ func _shots(dir: String) -> void:
 				car.in_throttle = 1.0
 				car.in_steer = 0.0
 				await _cap(dir, "train_%d" % int(c[0] + 500), 30)
+			# 手动漂移 + 触控 HUD
+			car.assist = 0
+			car.teleport(Vector3(-290, 0.1, -345), 0.0, Vector3(33, 0, 0))
+			cam.snap()
+			ui.thr_out = 1.0
+			ui.steer_out = -0.8
+			for q in 70:
+				car.in_throttle = 1.0
+				car.in_steer = -1.0 if q < 14 else -0.8
+				car.in_hand = q < 14
+				ui.touches[0] = {"pos": ui._rects()["gas"][0], "start": ui._rects()["gas"][0], "role": "gas"}
+				ui.touches[1] = {"pos": Vector2(150, 470), "start": Vector2(220, 470), "role": "steer"}
+				await get_tree().physics_frame
+			await _cap(dir, "hud_drift", 2)
+			ui.touches.clear()
 		if mi < 3:
 			for wi in [1, 2]:
 				Save.weather[mi] = wi

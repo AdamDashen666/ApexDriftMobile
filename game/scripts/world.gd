@@ -169,10 +169,10 @@ static func _tint(sp: int, variant: int, hash_v: float) -> Color:
 	var c := Color(1, 1, 1)
 	var sp_name: String = GameData.TREE_ORDER[sp]
 	if sp_name.contains("Sakura"):
-		c = Color(1.18, 1.02, 1.08)
+		c = Color(1.22, 0.98, 1.06)
 	elif sp_name.contains("Maple"):
 		# 原贴图是红叶；橙、金靠抬绿通道
-		c = [Color(1.25, 1.1, 1.1), Color(1.55, 2.7, 1.1), Color(1.75, 5.0, 1.4)][variant]
+		c = [Color(1.0, 1.0, 1.0), Color(1.15, 2.1, 1.0), Color(1.25, 3.6, 1.2)][variant]
 	var l := 0.88 + 0.24 * hash_v
 	return Color(c.r * l, c.g * l, c.b * l)
 
@@ -233,7 +233,7 @@ func _trees(dir: String) -> void:
 			var l: Array = by[sp]
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
-			mm.use_colors = true
+			mm.use_custom_data = true
 			mm.mesh = _tree_mesh(GameData.TREE_ORDER[sp])
 			mm.instance_count = l.size()
 			for q in l.size():
@@ -241,7 +241,7 @@ func _trees(dir: String) -> void:
 				var pos := Vector3(near[i], near[i + 2], near[i + 1]) - ctr
 				var sc := near[i + 4]
 				mm.set_instance_transform(q, Transform3D(Basis(Vector3.UP, -near[i + 3]).scaled(Vector3(sc, sc, sc)), pos))
-				mm.set_instance_color(q, _tint(sp, int(near[i + 6]), fposmod(near[i] * 0.37 + near[i + 1] * 0.71, 1.0)))
+				mm.set_instance_custom_data(q, _tint(sp, int(near[i + 6]), fposmod(near[i] * 0.37 + near[i + 1] * 0.71, 1.0)))
 			var mi := MultiMeshInstance3D.new()
 			mi.multimesh = mm
 			mi.position = ctr
@@ -568,9 +568,13 @@ func _dynamic(dir: String) -> void:
 func reset_props() -> void:
 	for i in dyn_bodies.size():
 		var rb := dyn_bodies[i]
+		var rid := rb.get_rid()
+		PhysicsServer3D.body_set_state(rid, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, Vector3.ZERO)
+		PhysicsServer3D.body_set_state(rid, PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, Vector3.ZERO)
+		PhysicsServer3D.body_set_state(rid, PhysicsServer3D.BODY_STATE_TRANSFORM, dyn_home[i])
+		rb.global_transform = dyn_home[i]
 		rb.linear_velocity = Vector3.ZERO
 		rb.angular_velocity = Vector3.ZERO
-		rb.global_transform = dyn_home[i]
 		rb.sleeping = true
 
 func moved_props() -> int:
@@ -588,7 +592,7 @@ func set_weather(idx: int) -> void:
 	var dir := Vector3(cos(p) * cos(y), sin(p), cos(p) * sin(y))
 	sun.look_at_from_position(Vector3.ZERO, dir, Vector3.UP)
 	sun.light_color = wx["color"]
-	sun.light_energy = wx["energy"]
+	sun.light_energy = 0.92 * float(wx["energy"])
 	var si: Dictionary = GameData.sky_info[wx["sky"]]
 	var sm := ShaderMaterial.new()
 	sm.shader = Mats._shader("sky", Mats.SKY)
@@ -606,10 +610,10 @@ func set_weather(idx: int) -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_sky_contribution = 1.0
-	env.ambient_light_energy = wx["ambient"]
+	env.ambient_light_energy = 0.78 * float(wx["ambient"])
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 0.92 * float(wx["exposure"])
+	env.tonemap_exposure = 0.80 * float(wx["exposure"])
 	env.tonemap_white = 6.0
 	env.fog_enabled = true
 	env.fog_light_color = wx["fog"]
