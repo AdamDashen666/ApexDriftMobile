@@ -17,21 +17,29 @@ dsh dumpsys display | grep -E "mSupportedModes|mActiveModeId|renderFrameRate" | 
 
 adb install -r -g "$APK" > "$OUT/install.txt" 2>&1 || { cat "$OUT/install.txt"; echo "安装失败"; exit 1; }
 cat "$OUT/install.txt"
-adb logcat -c
-adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-
-# 软件渲染下第一次编译着色器很慢（模拟器里要几分钟）：等主菜单第一帧真正画出来
-# （main.gd 依次打“进入主菜单”“主菜单首帧已画出”）
+# 刚开机时系统还在解锁用户、装主题覆盖层，前台 Activity 会被重建，而 Godot 遇到 Activity 重建会直接退出进程。
+# 所以先等系统稳定；万一启动后进程还是没了，就再启动一次（最多 3 次，每次的日志都留着）
+sleep 45
 started=0
 drawn=0
-for i in $(seq 1 300); do
-  sleep 2
-  log=$(adb logcat -d -s godot:I 2>/dev/null)
-  echo "$log" | grep -q "进入主菜单" && started=1
-  if echo "$log" | grep -q "主菜单首帧已画出"; then drawn=1; break; fi
-  [ -n "$(dsh pidof $PKG)" ] || { [ $i -gt 5 ] && break; }
+for attempt in 1 2 3; do
+  adb logcat -c
+  adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+  # 软件渲染下第一次编译着色器很慢（模拟器里要几分钟）：等主菜单第一帧真正画出来
+  # （main.gd 依次打“进入主菜单”“主菜单首帧已画出”）
+  for i in $(seq 1 300); do
+    sleep 2
+    log=$(adb logcat -d -s godot:I 2>/dev/null)
+    echo "$log" | grep -q "进入主菜单" && started=1
+    if echo "$log" | grep -q "主菜单首帧已画出"; then drawn=1; break; fi
+    [ -n "$(dsh pidof $PKG)" ] || { [ $i -gt 5 ] && break; }
+  done
+  echo "第 $attempt 次启动：等待 $((i * 2)) 秒，进菜单=$started，首帧=$drawn"
+  [ $drawn = 1 ] && break
+  [ -n "$(dsh pidof $PKG)" ] && break
+  adb logcat -d > "$OUT/logcat_try$attempt.txt" 2>&1
+  sleep 15
 done
-echo "等待 $((i * 2)) 秒，进菜单=$started，首帧=$drawn"
 sleep 5
 adb exec-out screencap -p > "$OUT/1_menu.png"
 pid1=$(dsh pidof $PKG)
