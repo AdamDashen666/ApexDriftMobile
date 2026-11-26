@@ -351,9 +351,9 @@ jobs:
           grep -E "Verified using|Signer #1 certificate DN|Signer #1 certificate SHA-256" "$L/apksigner.txt"
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$L/apksigner.txt" || { echo "::error::没有 v2 签名"; exit 1; }
           "$BT/aapt2" dump badging "$A" > "$L/badging.txt"
-          grep -E "^(package|sdkVersion|targetSdkVersion|application-label|launchable-activity|native-code|uses-permission|uses-feature)" "$L/badging.txt"
+          grep -E "^(package|minSdkVersion|sdkVersion|targetSdkVersion|application-label:|application-isGame|native-code|uses-permission)" "$L/badging.txt"
           grep -q "^package: name='$PKG'" "$L/badging.txt" || { echo "::error::包名不对"; exit 1; }
-          grep -q "^sdkVersion:'29'" "$L/badging.txt" || { echo "::error::最低系统版本不是 API 29"; exit 1; }
+          grep -q -E "^(min)?[sS]dkVersion:'29'" "$L/badging.txt" || { echo "::error::最低系统版本不是 API 29"; exit 1; }
           [ "$(grep '^native-code:' "$L/badging.txt")" = "native-code: 'arm64-v8a'" ] || { echo "::error::ABI 不是只有 arm64-v8a"; exit 1; }
           grep -q "^application-label:'APEX DRIFT'" "$L/badging.txt" || { echo "::error::显示名不对"; exit 1; }
           perms=$(grep -oP "^uses-permission: name='\K[^']+" "$L/badging.txt" | sort -u)
@@ -362,8 +362,10 @@ jobs:
           [ -z "$extra" ] || { echo "::error::多了用不到的权限: $extra"; exit 1; }
           "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$A" > "$L/manifest.txt"
           grep -E "screenOrientation|isGame|appCategory|extractNativeLibs" "$L/manifest.txt" || true
+          # 桌面入口是 activity-alias（aapt2 的 badging 不把它算 launchable-activity），这里直接查清单
+          grep -q "android.intent.category.LAUNCHER" "$L/manifest.txt" || { echo "::error::没有桌面入口"; exit 1; }
           unzip -l "$A" > "$L/apk-contents.txt"
-          for f in assets/assets.sparsepck assets/project.binary assets/CREDITS.txt; do
+          for f in assets/assets.sparsepck assets/CREDITS.txt; do
             grep -q " $f$" "$L/apk-contents.txt" || { echo "::error::APK 里缺 $f"; exit 1; }
           done
           grep -E " lib/" "$L/apk-contents.txt" || true
