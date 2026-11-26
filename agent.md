@@ -18,12 +18,12 @@
 ## 验证
 - CI `preview`：`--autotest` 逻辑测试（四图静置、自动漂移一圈、三档操控、360、坡道、撞道具、双击复位、存档写读、菜单每个按钮、返回键各级）+ 无参数正常启动两次 + `--shots=<目录>` 截图。
 - `[ipa]` 提交才跑 macOS：导出 Xcode 工程 → 未签名 IPA → 在 macOS 上用 Metal 跑截图、跑导出的 pck、跑分（官方模板的模拟器库只有 x86_64 且不支持 Metal 渲染，所以不用模拟器）。
-- `[apk]` 提交才跑安卓（ubuntu）：gradle 导出 arm64 APK → `apksigner verify`、`aapt2 dump badging`（包名、最低 API 29、只有 arm64-v8a、只有 VIBRATE 权限、桌面入口）、体积 < 200MB → 解出 APK 的 `assets/`，用 Linux 版 Godot `--main-pack assets/assets.sparsepck` 加软件 Vulkan 跑截图 → 另导一个 x86_64 测试包在 API 34 模拟器里冷启动、截图、按返回键（这一步失败不挡出包，看 `android-logs/emulator/`）。
+- `[apk]` 提交才跑安卓（ubuntu）：gradle 导出 arm64 APK → `apksigner verify`、`aapt2 dump badging`（包名、最低 API 29、只有 arm64-v8a、只有 VIBRATE 权限、桌面入口）、体积 < 200MB → 解出 APK 的 `assets/`，用 Linux 版 Godot `--main-pack assets/assets.sparsepck` 加软件 Vulkan 跑截图 → 另导一个 x86_64 测试包在 API 34 模拟器（SwiftShader Vulkan）里冷启动、按返回键，看游戏日志（Vulkan 初始化、进菜单、首帧画出、刷新率申请的 Java 调用、返回键只提示不退出）。**模拟器测试不稳定、未作为门槛**（`continue-on-error`，结果在 `android-logs/emulator/`）：模拟器截屏多为黑屏或旧帧，不能当画面证据；画面以 Linux 跑 APK 里的 pck 截图为准。
 - 手动触发 workflow 时 iOS 和安卓都出。Windows 上不在本机运行 Godot（权限不允许），全部在 CI 上跑；`scripts/ci-run.sh` 推送并等构建、下载产物到 `out/<run_id>/`。
 
 ## 当前状态
 - iOS v1.0 已交付（run 45689037016，未签名 IPA 约 92MB，iOS 16+，A12 起）。
-- 安卓 v1.0：见下方“安卓交付”一节（构建号、大小、签名）。
+- 安卓 v1.0 已交付（最终绿灯 run 45824639448，APK 在 `out/45824639448/android-apk/`）：APK 约 138MB（其中 libgodot_android.so 71MB 不压缩存放），versionName 1.0，最低 Android 10（API 29），target 36，只有 arm64-v8a，权限只有 VIBRATE，横屏 userLandscape，gradle 构建。
 - 安卓签名：默认每次构建临时生成调试密钥库（`androiddebugkey`/`android`），**签名每次不同，覆盖安装前要先卸载旧版**；仓库若配了 `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` 三个 secrets 就用用户证书（用户自己运行 `scripts/set-android-signing.sh` 设置）。versionCode = 构建序号。
 - `perf.gd`：动态分辨率 → 到底还掉帧就逐级关 MSAA、再降分辨率、关阴影；低电量锁 60 时自动按 60 跑。
 - 每帧约 140–330 draws、9–19 万三角。CI 的 macOS 虚拟机（Apple 虚拟 GPU，关垂直同步，约 1.39M 像素的 3D 画面）平均 97–216fps，机器波动大，只能看趋势，不代表 iPhone。

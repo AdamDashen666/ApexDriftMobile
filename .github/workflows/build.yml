@@ -408,7 +408,8 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # 模拟器冒烟测试（x86_64 测试包，软件渲染）：能装、能启动进菜单、返回键不退出。失败不挡出包，看日志和截图。
+      # 模拟器冒烟测试（x86_64 测试包，软件渲染）：能装、能启动进菜单、返回键不退出，以游戏日志为准。
+      # 不稳定，不作为门槛（失败不挡出包）；模拟器截屏常是黑屏或旧帧，画面以上一步 pck 截图为准。
       - name: Emulator smoke test
         continue-on-error: true
         timeout-minutes: 25

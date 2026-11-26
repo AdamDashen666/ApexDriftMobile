@@ -7,6 +7,7 @@
 - 安卓高刷：Android 15 起系统默认把游戏压在 60Hz，必须对渲染 Surface 调 `setFrameRate()`（`droid.gd`）。Godot 自带的 Swappy 会按启动时刻的刷新率定死交换间隔（启动时 60 就一直 60），所以 `display/window/frame_pacing/android/enable_frame_pacing=false`，别打开。
 - GDScript 调 Java（JavaClassWrapper / AndroidRuntime）前先 `has_java_method`：方法不存在时直接调用会让整个函数报错中断。
 - 安卓导出必须用 gradle 构建：非 gradle 的模板 APK 最低版本固定 API 24，改不了；gradle 模板（4.7.2）要 build-tools 36.1.0、platform 36、JDK 17。aapt2 的 badging 写 `minSdkVersion:`，桌面入口是 activity-alias（不显示为 launchable-activity）。
+- Godot 安卓遇到 Activity 重建（不在 configChanges 里的配置变化，如模拟器刚开机时的主题覆盖层）会直接退出进程；CI 模拟器开机后要等系统稳定再启动。模拟器截屏常是黑屏 / 旧帧，不能当画面证据。
 - 安卓包里的工程数据是 sparse pck：`assets/assets.sparsepck` 只是目录，文件散在 `assets/` 下；Linux 编辑器版 Godot 用 `--main-pack <解包目录>/assets/assets.sparsepck` 能直接跑。
 - glTF 顶点色被 Godot 导入时编码成 sRGB，shader 里用网格 `COLOR` 要先 `pow(2.2)`；SurfaceTool 自建网格不用。
 - 天空 HDR（`sky/*.hdr`）和 JPG 的经度差 90°，`SKY` shader 的 cubemap 分支里已补偿。
