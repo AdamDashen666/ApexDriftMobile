@@ -83,6 +83,9 @@ func _ready() -> void:
 	Save.store()
 	print("[APEX] 进入主菜单")
 	Droid.request_max_refresh(true)
+	# 第一次画主菜单要编译着色器，设备上可能要十几秒；CI 的安卓模拟器等这一行再截图
+	await RenderingServer.frame_post_draw
+	print("[APEX] 主菜单首帧已画出")
 
 func _perf_step() -> void:
 	if world != null:
@@ -354,6 +357,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 func go_back() -> void:
 	if ui == null:
 		return
+	print("[APEX] 返回键：", ui.screen)
 	match ui.screen:
 		"play":
 			if st == St.PLAY or st == St.COUNT:
