@@ -1,7 +1,8 @@
 class_name Perf
 extends Node
 # 动态分辨率：盯着屏幕刷新率，掉帧先降 3D 分辨率，稳定一段时间再试着升回来。
-# 不设帧率上限：Engine.max_fps = 0，iOS 由 CADisplayLink 按屏幕最高刷新率驱动。
+# 不设帧率上限：Engine.max_fps = 0，iOS 由 CADisplayLink 按屏幕最高刷新率驱动；
+# 安卓由 Droid 向系统申请最高刷新率（见 droid.gd），这里每 2 秒核对一次系统实际给的刷新率。
 
 var target := 120.0
 var scale := 1.0
@@ -23,11 +24,15 @@ var native := 120.0         # 屏幕最高刷新率
 var _lock := 0.0
 var step := 0                # 兜底档：1 关抗锯齿 2 再降分辨率 3 关阴影
 var _stuck := 0.0
+var _hz_t := 0.0
 signal step_changed
 
 func setup(q: int) -> void:
 	quality = q
 	var r := DisplayServer.screen_get_refresh_rate()
+	# 安卓：启动时系统可能还停在 60Hz（Android 15 起游戏默认 60），按屏幕支持的最高刷新率算
+	if Droid.max_hz > r:
+		r = Droid.max_hz
 	target = r if r > 20.0 and r < 500.0 else 60.0
 	native = target
 	Engine.max_fps = 0
@@ -71,6 +76,8 @@ func _process(dt: float) -> void:
 func _decide() -> void:
 	if fixed_scale > 0.0:
 		return
+	if Droid.active:
+		_droid_hz()
 	# 低电量模式会把高刷屏锁在 60：降到最低分辨率还是稳稳 60，就按 60 跑、把画质还回来
 	if target > 100.0 and scale <= lo + 0.01 and absf(fps - 60.0) < 1.5 and low_fps > 48.0:
 		_lock += 0.5
@@ -119,3 +126,21 @@ func _decide() -> void:
 			apply()
 	else:
 		_good = 0.0
+
+# 安卓：系统在省电模式、过热、用户锁了 60Hz 或者没接受申请时会把刷新率压下来。
+# 看到系统给的刷新率低于屏幕最高值且帧率正贴着它，就直接按它跑，不用先把分辨率降到底才发现；
+# 同时隔一阵再申请一次（限流在 Droid 里）。系统放开后自动回到最高刷新率。
+func _droid_hz() -> void:
+	_hz_t += 0.5
+	if _hz_t < 2.0:
+		return
+	_hz_t = 0.0
+	var cur := DisplayServer.screen_get_refresh_rate()
+	if cur < 20.0 or cur > 500.0:
+		return
+	if cur < native - 3.0:
+		Droid.request_max_refresh()
+		if fps < cur * 1.1 and target > cur + 3.0:
+			target = cur
+	elif target < cur - 3.0:
+		target = minf(cur, native)

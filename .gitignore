@@ -1,8 +1,14 @@
 out/
 build/
 *.ipa
+*.apk
+*.aab
 .DS_Store
+# Godot 导出安卓时在工程里生成的 gradle 工程
+game/android/
 # 签名材料绝不能提交
 *.p12
 *.mobileprovision
 *.cer
+*.keystore
+*.jks

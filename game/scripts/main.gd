@@ -21,6 +21,7 @@ var loaded_map := -1
 var auto_cache: Dictionary = {}
 var testing := false
 var external := false        # 测试脚本直接控车
+var back_t := -10000         # 主菜单上次按返回键的时间（毫秒），2 秒内再按才退出
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -29,6 +30,9 @@ func _ready() -> void:
 	Save.persist = not testing
 	if not testing:
 		Save.load_cfg()
+	# 安卓返回键由 go_back() 处理，不让引擎直接退出（project.godot 里也关了）
+	get_tree().quit_on_go_back = false
+	Droid.init()
 	print("[APEX] method=%s driver=%s adapter=%s refresh=%.1f max_fps=%d size=%s" % [
 		RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name(), RenderingServer.get_video_adapter_name(),
 		DisplayServer.screen_get_refresh_rate(), Engine.max_fps, str(DisplayServer.window_get_size())])
@@ -77,6 +81,8 @@ func _ready() -> void:
 	load_map(Save.map)
 	goto_menu()
 	Save.store()
+	print("[APEX] 进入主菜单")
+	Droid.request_max_refresh(true)
 
 func _perf_step() -> void:
 	if world != null:
@@ -330,9 +336,44 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		if ui != null and not testing and (st == St.PLAY or st == St.COUNT):
 			_set_paused(true)
+	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		# 安卓回到前台时渲染 Surface 可能是新建的，刷新率申请要重新投；刘海位置也可能变了
+		Droid.request_max_refresh(true)
+		if ui != null:
+			ui._safe()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		if ui != null and (st == St.PLAY or st == St.COUNT):
-			_set_paused(true)
+		go_back()
+
+func _unhandled_input(ev: InputEvent) -> void:
+	# 桌面上 Esc 等同安卓返回键，方便调试
+	var k := ev as InputEventKey
+	if k != null and k.pressed and not k.echo and k.keycode == KEY_ESCAPE:
+		go_back()
+
+# 安卓返回键（含手势返回）：游戏中打开暂停菜单，各级菜单返回上一级；主菜单上只提示，2 秒内再按一次才退出
+func go_back() -> void:
+	if ui == null:
+		return
+	match ui.screen:
+		"play":
+			if st == St.PLAY or st == St.COUNT:
+				sfx.play("SFX_UI_Click", -10.0)
+				_set_paused(true)
+		"pause":
+			_on_action("resume")
+		"settings", "help":
+			_on_action("back")
+		"credits":
+			_on_action("back2")
+		"result":
+			_on_action("menu")
+		"menu":
+			var now := Time.get_ticks_msec()
+			if now - back_t < 2000:
+				get_tree().quit()
+			else:
+				back_t = now
+				ui.show_toast("再按一次返回键退出")
 
 func _on_action(id: String) -> void:
 	sfx.play("SFX_UI_Click", -10.0)
@@ -663,6 +704,17 @@ func _autotest() -> void:
 	_on_action("resume")
 	await ticks(10)
 	_ck(st == St.PLAY, "继续")
+	# 安卓返回键：游戏中 → 暂停；设置 → 回暂停；暂停 → 继续
+	go_back()
+	await get_tree().process_frame
+	_ck(st == St.PAUSE and ui.screen == "pause", "返回键：游戏中打开暂停")
+	_on_action("settings")
+	go_back()
+	await get_tree().process_frame
+	_ck(ui.screen == "pause", "返回键：设置回到暂停")
+	go_back()
+	await ticks(10)
+	_ck(st == St.PLAY and ui.screen == "play", "返回键：暂停里继续")
 	# 触控：按油门 + 左滑
 	var e := InputEventScreenTouch.new()
 	e.index = 0
@@ -697,6 +749,14 @@ func _autotest() -> void:
 	ui._input(e)
 	_on_action("menu")
 	await ticks(5)
+	# 返回键：帮助 → 菜单；主菜单只提示不退出
+	_on_action("help")
+	go_back()
+	await ticks(2)
+	_ck(ui.screen == "menu", "返回键：帮助回菜单")
+	go_back()
+	await ticks(2)
+	_ck(st == St.MENU and ui.toast != "" and not get_tree().quit_on_go_back, "返回键：主菜单只提示不退出")
 	print("AUTOTEST %s fails=%d" % ["PASS" if fails == 0 else "FAIL", fails])
 	get_tree().quit(0 if fails == 0 else 1)
 

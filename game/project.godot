@@ -13,6 +13,7 @@ config/icon="res://icon.png"
 run/max_fps=0
 run/low_processor_mode=false
 run/delta_smoothing=true
+config/quit_on_go_back=false
 
 [audio]
 
@@ -32,6 +33,7 @@ window/ios/allow_high_refresh_rate=true
 window/ios/hide_home_indicator=true
 window/ios/hide_status_bar=true
 window/ios/suppress_ui_gesture=true
+window/frame_pacing/android/enable_frame_pacing=false
 window/energy_saving/keep_screen_on=true
 
 [input_devices]
@@ -55,6 +57,7 @@ common/physics_interpolation=false
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
 rendering_device/driver.ios="metal"
+rendering_device/driver.android="vulkan"
 textures/vram_compression/import_etc2_astc=true
 textures/vram_compression/import_s3tc_bptc=true
 textures/canvas_textures/default_texture_filter=1

@@ -41,6 +41,10 @@ var map_scale := 1.0
 var mm: Control
 var redraw_acc := 0.0
 var drag_slider := ""
+var toast := ""              # 菜单类界面底部的短提示（如“再按一次返回键退出”）
+var toast_t := 9.0
+var safe_t := 0.0
+var g_flip := 1.0            # 安卓重力左右修正，见 _read_controls
 
 const INK := Color(0.04, 0.04, 0.055)
 const PAPER := Color(0.97, 0.95, 0.91)
@@ -94,11 +98,22 @@ func show_callout(s: String, k: int) -> void:
 	callout_k = k
 	callout_t = 0.0
 
+func show_toast(s: String) -> void:
+	toast = s
+	toast_t = 0.0
+
 func _process(dt: float) -> void:
 	t += dt
 	callout_t += dt
+	toast_t += dt
 	go_t += dt
 	hint_t += dt
+	# 安全区每秒重算一次：横屏 180° 翻转时窗口尺寸不变、不会触发 size_changed，
+	# 但刘海换到了另一边；安卓刚启动时系统也可能还没给出安全区
+	safe_t += dt
+	if safe_t >= 1.0:
+		safe_t = 0.0
+		_safe()
 	if size.x < 10.0:
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if screen == "play":
@@ -229,6 +244,14 @@ func _read_controls(dt: float) -> void:
 		if g.length() < 1.0:
 			g = Input.get_accelerometer()
 		if g.length() > 1.0:
+			# 安卓：横屏 180° 翻转时引擎缓存的屏幕方向不一定更新（窗口尺寸没变就收不到配置变化），
+			# 传感器坐标会整体反过来。正常拿手机时重力指向屏幕下方（y < 0），指向上方说明反了。
+			if Droid.active:
+				if g.y > 2.5:
+					g_flip = -1.0
+				elif g.y < -2.5:
+					g_flip = 1.0
+				g.x *= g_flip
 			var v := clampf(g.x / 9.8 * 2.3 * Save.steer_sens, -1.0, 1.0)
 			st = signf(v) * maxf(0.0, absf(v) - 0.04) / 0.96
 	# 键盘 / 手柄
@@ -293,6 +316,12 @@ func _draw() -> void:
 		"result": _draw_result()
 		"help": _draw_help()
 		"credits": _draw_credits()
+	if toast != "" and toast_t < 1.8 and screen != "play":
+		var a := clampf((1.8 - toast_t) / 0.3, 0.0, 1.0)
+		var tw := f_zh.get_string_size(toast, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+		var r := Rect2(size.x * 0.5 - tw * 0.5 - 28, size.y - 112 - safe_b, tw + 56, 46)
+		_skew(r, Color(INK, 0.9 * a))
+		_txt(f_zh, toast, r.get_center() + Vector2(4, 9), 24, Color(PAPER, a), HORIZONTAL_ALIGNMENT_CENTER)
 
 func _draw_loading() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.03, 0.04))

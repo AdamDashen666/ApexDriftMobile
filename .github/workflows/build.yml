@@ -213,3 +213,218 @@ jobs:
             ${{ env.OUT }}/logs
             ${{ env.OUT }}/screenshots
           if-no-files-found: ignore
+
+  # 提交信息里带 [apk] 或手动触发时出安卓包（ubuntu 构建机，免费）。
+  # 签名：仓库配了 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS 三个 secrets 就用用户自己的证书
+  # （用 scripts/set-android-signing.sh 设置）；没配就每次临时生成调试密钥库，签名每次都不同，覆盖安装前要先卸载旧版。
+  android:
+    name: Android (signed APK)
+    needs: preview
+    if: contains(github.event.head_commit.message, '[apk]') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PKG: com.adamdashen666.apexdriftmobile
+      BUILD_TOOLS: "36.1.0"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Godot and Android template
+        id: godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-linux-android-${{ env.GODOT_VERSION }}
+
+      - name: Download Godot and Android template
+        if: steps.godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot && cd ~/godot
+          B=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          curl -sSLO $B/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          curl -sSLO $B/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          curl -sSLO $B/SHA512-SUMS.txt
+          for f in Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip Godot_v${GODOT_VERSION}-stable_export_templates.tpz; do
+            [ "$(sha512sum $f | cut -d' ' -f1)" = "$(grep " $f$" SHA512-SUMS.txt | cut -d' ' -f1)" ] || { echo "::error::$f 校验失败"; exit 1; }
+          done
+          unzip -q Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip && mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 godot
+          unzip -q -j Godot_v${GODOT_VERSION}-stable_export_templates.tpz 'templates/android_source.zip' 'templates/version.txt' -d tpl
+          rm -f *.zip *.tpz; ls -la . tpl
+
+      - name: Android SDK, editor settings and signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          mkdir -p "$OUT/logs"
+          # 官方导出模板（gradle 工程源码）
+          D=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p "$D" && cp ~/godot/tpl/* "$D/"
+          # 构建机自带的 Android SDK，补上 Godot 4.7 模板要的 build-tools / platform
+          echo "ANDROID_HOME=$ANDROID_HOME JAVA_HOME=$JAVA_HOME"; java -version 2>&1 | head -1 || true
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+          "$SDKM" "build-tools;$BUILD_TOOLS" "platforms;android-36" "platform-tools" > "$OUT/logs/sdkmanager.log" 2>&1 || { tail -20 "$OUT/logs/sdkmanager.log"; exit 1; }
+          ls "$ANDROID_HOME/build-tools"
+          # Godot 编辑器设置：SDK 和 JDK 路径
+          mkdir -p ~/.config/godot
+          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+            "$ANDROID_HOME" "$JAVA_HOME" > ~/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres
+          cat ~/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres
+          # 签名密钥库：放在仓库外的临时目录，构建结束随构建机销毁
+          K="$RUNNER_TEMP/keys"; mkdir -p "$K"; chmod 700 "$K"
+          if [ -n "$KS_B64" ]; then
+            [ -n "$KS_PASS" ] && [ -n "$KS_ALIAS" ] || { echo "::error::配了 ANDROID_KEYSTORE_BASE64，但缺 ANDROID_KEYSTORE_PASSWORD 或 ANDROID_KEY_ALIAS"; exit 1; }
+            echo "$KS_B64" | base64 -d > "$K/release.keystore"
+            keytool -list -keystore "$K/release.keystore" -storepass "$KS_PASS" -alias "$KS_ALIAS" > /dev/null || { echo "::error::用户密钥库打不开（密码或别名不对）"; exit 1; }
+            echo "SIGN_MODE=user" >> "$GITHUB_ENV"
+            echo "签名：仓库 secrets 里的用户证书"
+          else
+            keytool -genkeypair -keystore "$K/release.keystore" -storetype PKCS12 -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -noprompt
+            echo "SIGN_MODE=debug" >> "$GITHUB_ENV"
+            echo "签名：本次构建临时生成的调试密钥库（androiddebugkey），每次构建都不同"
+          fi
+
+      - name: Restore import cache
+        uses: actions/cache/restore@v4
+        with:
+          path: game/.godot
+          key: import-linux-${{ env.GODOT_VERSION }}-${{ hashFiles('game/assets/**', 'game/project.godot') }}
+          restore-keys: import-linux-${{ env.GODOT_VERSION }}-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-godot-${{ env.GODOT_VERSION }}
+
+      - name: Export APK (gradle build)
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ runner.temp }}/keys/release.keystore
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ "$SIGN_MODE" = user ]; then
+            export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$KS_ALIAS" GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$KS_PASS"
+          else
+            export GODOT_ANDROID_KEYSTORE_RELEASE_USER=androiddebugkey GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=android
+          fi
+          G=~/godot/godot
+          mkdir -p build/android
+          "$G" --headless --path game --import > "$OUT/logs/import.log" 2>&1 || true
+          if grep -q -E "Parse Error|Compile Error" "$OUT/logs/import.log"; then grep -E -A1 "SCRIPT ERROR|Parse Error" "$OUT/logs/import.log" | head -40; exit 1; fi
+          # versionCode 用构建序号，保证一次比一次大（用同一个证书时才能直接覆盖安装）
+          sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" game/export_presets.cfg
+          "$G" --headless --path game --install-android-build-template --export-release "Android" "$PWD/build/android/ApexDriftMobile.apk" > "$OUT/logs/export.log" 2>&1 || true
+          tail -25 "$OUT/logs/export.log"
+          if [ ! -f build/android/ApexDriftMobile.apk ]; then
+            grep -n -E "ERROR|error:|What went wrong|FAILURE" -A6 "$OUT/logs/export.log" | head -80 || true
+            echo "::error::APK 没导出来"; exit 1
+          fi
+          # 再导一个 x86_64 的测试包，只给 CI 的模拟器用，不发布
+          sed -i -e 's/^architectures\/arm64-v8a=true/architectures\/arm64-v8a=false/' -e 's/^architectures\/x86_64=false/architectures\/x86_64=true/' game/export_presets.cfg
+          "$G" --headless --path game --export-release "Android" "$PWD/build/android/emu-x86_64.apk" > "$OUT/logs/export-x86_64.log" 2>&1 || true
+          git checkout -- game/export_presets.cfg
+          ls -la build/android
+          # 用户证书的密码不能出现在要上传的日志里
+          if [ "$SIGN_MODE" = user ]; then
+            for f in "$OUT"/logs/*.log; do
+              python3 -c 'import os, sys; p = sys.argv[1]; s = open(p, encoding="utf-8", errors="replace").read(); open(p, "w", encoding="utf-8").write(s.replace(os.environ["KS_PASS"], "***"))' "$f"
+            done
+          fi
+
+      - name: Check APK (signature, manifest, ABI, size, contents)
+        run: |
+          A=build/android/ApexDriftMobile.apk
+          BT="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
+          L="$OUT/logs"
+          "$BT/apksigner" verify --verbose --print-certs "$A" > "$L/apksigner.txt" 2>&1 || { cat "$L/apksigner.txt"; echo "::error::签名校验失败"; exit 1; }
+          grep -E "Verified using|Signer #1 certificate DN|Signer #1 certificate SHA-256" "$L/apksigner.txt"
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$L/apksigner.txt" || { echo "::error::没有 v2 签名"; exit 1; }
+          "$BT/aapt2" dump badging "$A" > "$L/badging.txt"
+          grep -E "^(package|sdkVersion|targetSdkVersion|application-label|launchable-activity|native-code|uses-permission|uses-feature)" "$L/badging.txt"
+          grep -q "^package: name='$PKG'" "$L/badging.txt" || { echo "::error::包名不对"; exit 1; }
+          grep -q "^sdkVersion:'29'" "$L/badging.txt" || { echo "::error::最低系统版本不是 API 29"; exit 1; }
+          [ "$(grep '^native-code:' "$L/badging.txt")" = "native-code: 'arm64-v8a'" ] || { echo "::error::ABI 不是只有 arm64-v8a"; exit 1; }
+          grep -q "^application-label:'APEX DRIFT'" "$L/badging.txt" || { echo "::error::显示名不对"; exit 1; }
+          perms=$(grep -oP "^uses-permission: name='\K[^']+" "$L/badging.txt" | sort -u)
+          echo "$perms" | grep -qx android.permission.VIBRATE || { echo "::error::缺震动权限"; exit 1; }
+          extra=$(echo "$perms" | grep -v -x -e android.permission.VIBRATE -e "$PKG.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" || true)
+          [ -z "$extra" ] || { echo "::error::多了用不到的权限: $extra"; exit 1; }
+          "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$A" > "$L/manifest.txt"
+          grep -E "screenOrientation|isGame|appCategory|extractNativeLibs" "$L/manifest.txt" || true
+          unzip -l "$A" > "$L/apk-contents.txt"
+          for f in assets/assets.sparsepck assets/project.binary assets/CREDITS.txt; do
+            grep -q " $f$" "$L/apk-contents.txt" || { echo "::error::APK 里缺 $f"; exit 1; }
+          done
+          grep -E " lib/" "$L/apk-contents.txt" || true
+          echo "APK 内最大的文件："; sort -k1 -n -r "$L/apk-contents.txt" | head -8 || true
+          SZ=$(stat -c%s "$A"); echo "APK 大小 $((SZ / 1048576)) MB（$SZ 字节）"
+          [ "$SZ" -lt $((200 * 1048576)) ] || { echo "::error::APK 超过 200MB"; exit 1; }
+          cp "$A" "$OUT/ApexDriftMobile.apk"
+          (cd "$OUT" && sha256sum ApexDriftMobile.apk > ApexDriftMobile.apk.sha256 && cat ApexDriftMobile.apk.sha256)
+          VC=$(grep -oP "versionCode='\K[0-9]+" "$L/badging.txt"); VN=$(grep -oP "versionName='\K[^']+" "$L/badging.txt")
+          printf '包名 %s\n版本 %s（versionCode %s）\n最低 Android 10（API 29）\nABI arm64-v8a\n大小 %s 字节\n签名 %s\n' "$PKG" "$VN" "$VC" "$SZ" "$SIGN_MODE" > "$OUT/apk-info.txt"
+          cat "$OUT/apk-info.txt"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: android-apk
+          path: |
+            ${{ env.OUT }}/ApexDriftMobile.apk
+            ${{ env.OUT }}/ApexDriftMobile.apk.sha256
+            ${{ env.OUT }}/apk-info.txt
+
+      # 把 APK 里的数据（assets/ 下的 sparse pck 和它引用的各个文件）解出来，用 Linux 版 Godot 加软件 Vulkan
+      # 跑一遍截图，确认资源打全了（安卓包里的贴图是 ETC2/ASTC）
+      - name: Run the APK's pck on Linux (software Vulkan)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mesa-vulkan-drivers xvfb libgl1 >/dev/null
+          X="$RUNNER_TEMP/apk_x"; rm -rf "$X"; mkdir -p "$X" "$OUT/screenshots/apk-pck"
+          unzip -q build/android/ApexDriftMobile.apk 'assets/*' -d "$X"
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)
+          timeout 600 xvfb-run -a -s "-screen 0 1440x900x24" ~/godot/godot --main-pack "$X/assets/assets.sparsepck" --rendering-method mobile --rendering-driver vulkan \
+            --resolution 1334x616 --fixed-fps 60 -- --shots="$OUT/screenshots/apk-pck" > "$OUT/logs/apk-pck.log" 2>&1 || true
+          grep -E "SCRIPT ERROR|ERROR|\[APEX\]" "$OUT/logs/apk-pck.log" | head -60 || true
+          ls "$OUT/screenshots/apk-pck"
+          grep -q "shot ui_pause" "$OUT/logs/apk-pck.log" || { echo "::error::APK 里的 pck 没跑完截图"; exit 1; }
+          if grep -q -E "SCRIPT ERROR|Parse Error|缺文件|Can't open pack-referenced|No loader found" "$OUT/logs/apk-pck.log"; then echo "::error::APK 里的 pck 有脚本错误或缺资源"; exit 1; fi
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # 模拟器冒烟测试（x86_64 测试包，软件渲染）：能装、能启动进菜单、返回键不退出。失败不挡出包，看日志和截图。
+      - name: Emulator smoke test
+        continue-on-error: true
+        timeout-minutes: 25
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash scripts/android-emu-test.sh build/android/emu-x86_64.apk "$OUT/emulator"
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: android-logs
+          path: |
+            ${{ env.OUT }}/logs
+            ${{ env.OUT }}/screenshots
+            ${{ env.OUT }}/emulator
+          if-no-files-found: ignore
