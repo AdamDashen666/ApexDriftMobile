@@ -14,6 +14,53 @@ const RAY_DROOP := 0.20
 const WHEELBASE := 2.8
 const MAX_STEER := 0.60      # rad
 
+# ---- 拟真档的轮胎模型：与 Windows 版（ApexDriftVehiclePawn.cpp 的 namespace ApexSim / UpdateSimPhysics）同一套参数。
+# 车身坐标 x 向前、y 向右（= 本地 +Z），米；横摆角速度向右转为正。所有车共用同一个物理底盘（轮位、齿比）
+const SIM_G := 9.81
+const SIM_PX := [1.4975, 1.4975, -1.4175, -1.4175]   # 轮位相对质心（质心在前后轴中点后 4cm）
+const SIM_PY := [-0.8177, 0.8177, -0.9066, 0.9066]
+const SIM_A := 1.4975        # 质心到前轴
+const SIM_B := 1.4175        # 质心到后轴
+const SIM_L := 2.915
+const SIM_TRACK_F := 1.6354
+const SIM_TRACK_R := 1.8132
+const SIM_COMH := 0.34       # 算载荷转移用的质心高度
+const SIM_ROLL_F := 0.64     # 横向载荷转移由前轴扛的比例：到极限先推头
+const SIM_MU_LAT_F := 1.32
+const SIM_MU_LAT_R := 1.50
+const SIM_MU_LONG_F := 1.40
+const SIM_MU_LONG_R := 1.55
+const SIM_PEAK_AF := 0.150   # tan(前轮峰值侧偏角约 8.5°)
+const SIM_PEAK_AR := 0.105   # tan(后轮峰值侧偏角约 6°)：后轮比前轮“硬”
+const SIM_PEAK_K := 0.11     # 峰值滑移率
+const SIM_SLIDE_LAT_F := 0.80
+const SIM_SLIDE_LAT_R := 0.72
+const SIM_SLIDE_LONG := 0.86
+const SIM_DECAY := 1.4
+const SIM_LOAD_SENS := 0.16
+const SIM_YAW_K := 1.50      # 横摆转动惯量 Iz = 质量 × 1.5 m2
+const SIM_REAR_INERTIA := 45.0
+const SIM_BRAKE_ACCEL := 13.0
+const SIM_BRAKE_FRONT := 0.78
+const SIM_REAR_BRAKE_CAP := 0.60
+const SIM_REAR_RADIUS := 0.347
+const SIM_TO_RPM := 60.0 / (TAU * SIM_REAR_RADIUS)   # 胎面速度 m/s × 总传动比 → 发动机转速
+const SIM_DRAG := 0.95       # 风阻和车身阻力 N/(m/s)²（Windows 版 Chaos 实测值；驱动力里等量补回）
+# 牵引力控制与关掉时的空转上限（v2.8）
+const SIM_TCS_SLIP := 0.3    # 后轮已横着滑时仍只许 0.3 倍峰值滑移率的空转
+const SIM_TCS_HAND := 0.1    # 松手刹 0.1 秒后恢复
+const SIM_SPIN_BASE := 1.2
+const SIM_SPIN_GAIN := 0.7
+const SIM_SPIN_GAIN_HAND := 2.0
+# 变速箱（Windows 版 Chaos 的设置）：自动挡按后轮实际转速换挡，换挡空挡 0.1 秒
+const SIM_GEARS := [3.60, 2.40, 1.75, 1.36, 1.08, 0.86]
+const SIM_FINAL := 3.10
+const SIM_REV_RATIO := 3.40
+const SIM_REDLINE := 7800.0
+const SIM_UP_RPM := 6600.0
+const SIM_DOWN_RPM := 3900.0
+const SIM_SHIFT_TIME := 0.10
+
 # ---- 输入
 var in_throttle := 0.0
 var in_brake := 0.0
@@ -40,11 +87,6 @@ var exit_t := 0.0
 var power_t := 0.0
 var path_rate := 0.0         # 度/秒，右正
 var accel_f := 0.0
-var sim_free := false
-var sim_rate := 0.0
-var sim_spin := 0.0
-var sim_psi := 0.0
-var sim_air := 0.0
 var assist_t := 0.0
 var reverse := false
 var gear := 1
@@ -60,6 +102,47 @@ var wheel_spin_f := 0.0
 var wheel_spin_r := 0.0
 var skid := 0.0
 var boost := 0.0
+
+# ---- 拟真档（轮胎物理）
+var tcs := true              # 牵引力控制（设置里开关，默认开）；只在拟真档起作用
+var sim_on := false          # 这一帧由轮胎模型驱动
+var sim_free := false        # 车身横着滑（只统计：给计分、小地图，不干预）
+var sim_spin := 0.0
+var sim_psi := 0.0
+var sim_calm := 0.0
+var sim_ws := 0.0            # 后轮胎面速度 m/s（两轮共用，限滑差速）
+var sim_thr := 0.0
+var sim_prev_ok := false
+var sim_prev_vx := 0.0
+var sim_prev_vy := 0.0
+var sim_ax := 0.0            # 车身坐标加速度（低通），算载荷转移
+var sim_ay := 0.0
+var sim_gear := 1            # 当前挡：-1 倒挡、0 换挡中、1..6
+var sim_target := 1
+var sim_shift_cut := 0.0
+var sim_shift_t := 0.0
+var sim_hand_t := 9.0        # 松开手刹多久
+var sim_hand_slide := false  # 拉手刹起的横滑（空转上限放宽）
+var sim_rear_lat := 0.0      # 后轮侧向附着占用
+var sim_rpm := 900.0
+var sim_steer_lim := 38.0
+var sim_tcs_cap := -1.0      # 调试：这一帧牵引力控制给的驱动力上限（N），-1 = 没限
+var sim_skid := PackedFloat32Array([0, 0, 0, 0])
+var _fz := PackedFloat32Array([0, 0, 0, 0])
+var _vlr := PackedFloat32Array([0, 0])
+var _vtr := PackedFloat32Array([0, 0])
+var _cxr := PackedFloat32Array([0, 0])
+var _cyr := PackedFloat32Array([0, 0])
+var _rfl := PackedFloat32Array([0, 0])
+var _rft := PackedFloat32Array([0, 0])
+var _rs := PackedFloat32Array([0, 0])
+var _d_ratio := 0.0
+var _d_gear := 1
+var _d_thr := 0.0
+var _d_wsmax := 0.0
+var _d_vx := 0.0
+var _d_acc := 1.0
+var _d_top := 360.0
 
 var track: Track
 var wall_lat := 0.0          # 0 表示没有护墙
@@ -225,11 +308,28 @@ func teleport(pos: Vector3, yaw: float, vel := Vector3.ZERO) -> void:
 	hint = -1
 	reset_state()
 
+# 复位 / 传送 / 交还控制：清掉动态状态。设置（assist、tcs、车）不在这里动——
+# Windows 版 v2.6 修过“复位后设置被换回默认”，这里设置只由外面改；拟真档下一帧按当前车速重新起步（_sim_begin）
 func reset_state() -> void:
 	drift_on = false
+	sim_on = false
 	sim_free = false
-	sim_rate = 0.0
 	sim_spin = 0.0
+	sim_calm = 0.0
+	sim_ws = 0.0
+	sim_thr = 0.0
+	sim_prev_ok = false
+	sim_ax = 0.0
+	sim_ay = 0.0
+	sim_gear = 1
+	sim_target = 1
+	sim_shift_cut = 0.0
+	sim_shift_t = 0.0
+	sim_hand_t = 9.0
+	sim_hand_slide = false
+	sim_rear_lat = 0.0
+	for i in 4:
+		sim_skid[i] = 0.0
 	path_rate = 0.0
 	steer = 0.0
 	accel_f = 0.0
@@ -380,22 +480,28 @@ func _integrate_forces(st: PhysicsDirectBodyState3D) -> void:
 	var hs := clampf(kmh / 260.0, 0.0, 1.0)
 	steer = move_toward(steer, in_steer, dt * float(info.get("agility", 1.0)) * (8.0 if returning else lerpf(5.5, 2.6, hs)))
 
+	# 拟真档：整套交给轮胎模型（倒计时 / 菜单锁车时仍走下面的低速保持）
+	var sim_now := assist == 2 and not locked
+	if sim_now != sim_on:
+		if sim_now:
+			_sim_begin(vf)
+		else:
+			_sim_end()
 	if grounded >= 2:
 		air_t = 0.0
-		_drive(st, dt, v, vn, vt, w, gup, fwd, right, vf, vr, forward, yaw)
+		if not sim_on:
+			_drive(st, dt, v, vn, vt, w, gup, fwd, right, vf, vr, forward, yaw)
 	else:
 		air_t += dt
 		skid = 0.0
-		if sim_free:
-			sim_air += dt
-			if sim_air > 0.35:
-				sim_free = false
-		# 空中：角速度收敛，机头慢慢跟上速度方向，落地不容易翻
+		# 空中：角速度收敛（Windows 版空中角阻尼 2.6），机身慢慢摆平，落地不容易翻
 		w *= exp(-3.6 * dt)
 		var err := up.cross(Vector3.UP)
 		w += err * minf(5.0 * dt, 1.0)
 		st.angular_velocity = w
 		path_rate = lerpf(path_rate, 0.0, 1.0 - exp(-4.0 * dt))
+	if sim_on:
+		_sim(st, dt, gup, fwd, right, vt, vf, vr)
 	_walls(st)
 	_contacts(st)
 	# 翻车计时
@@ -404,7 +510,10 @@ func _integrate_forces(st: PhysicsDirectBodyState3D) -> void:
 	else:
 		flip_t = 0.0
 	wheel_spin_f = vf
-	wheel_spin_r = lerpf(wheel_spin_r, (0.0 if in_hand and grounded > 0 else vf + (6.0 * in_throttle if (drift_on or sim_free) else 0.0)), 1.0 - exp(-14.0 * dt))
+	if sim_on:
+		wheel_spin_r = sim_ws
+	else:
+		wheel_spin_r = lerpf(wheel_spin_r, (0.0 if in_hand and grounded > 0 else vf + (6.0 * in_throttle if drift_on else 0.0)), 1.0 - exp(-14.0 * dt))
 	_engine(dt)
 
 func _drive(st: PhysicsDirectBodyState3D, dt: float, _v: Vector3, vn: Vector3, vt: Vector3, w: Vector3, gup: Vector3, fwd: Vector3, right: Vector3, vf: float, _vr: float, forward: bool, yaw: float) -> void:
@@ -463,17 +572,11 @@ func _drive(st: PhysicsDirectBodyState3D, dt: float, _v: Vector3, vn: Vector3, v
 		skid = clampf(th * 1.5 - 0.6, 0.0, 1.0) * 0.5 if (vf < 3.0 and th > 0.8 and not locked) else 0.0
 		return
 	var dirv := vt / maxf(speed, 0.01)
-	var side := dirv.cross(gup)
-	var sim := assist == 2
+	var sim := assist == 2      # 拟真档平时走 _sim()；到这里只会是锁车时
 	var pro := assist == 1
 	var b := beta if forward else 0.0
 	var ab := absf(b)
-
-	if sim:
-		if _sim_slide(st, dt, vn, vt, w, gup, dirv, side, yaw, forward):
-			return
-	else:
-		sim_free = false
+	sim_free = false
 	# ---- 进入漂移
 	if forward and kmh > 28.0 and not sim:
 		var hand_entry := in_hand and absf(in_steer) > 0.18
@@ -585,68 +688,397 @@ func _drive(st: PhysicsDirectBodyState3D, dt: float, _v: Vector3, vn: Vector3, v
 	# 下压
 	st.apply_central_force(-gup * minf(0.0009 * speed * speed, 6.0) * MASS)
 
-# 拟真档：手刹甩起来后按惯性转，不拉回；松手才自然回正
-func _sim_slide(st: PhysicsDirectBodyState3D, dt: float, vn: Vector3, vt: Vector3, w: Vector3, gup: Vector3, dirv: Vector3, _side: Vector3, yaw: float, forward: bool) -> bool:
-	var cdrift: float = info.get("drift", 1.0)
+# ------------------------------------------------------------------ 拟真档：轮胎物理
+# 与 Windows 版 v2.8 同一套模型（ApexDriftVehiclePawn.cpp 的 UpdateSimPhysics）：四个轮胎各按接地点速度算侧偏角 / 滑移率，
+# 按载荷（车重 + 下压 + 纵 / 横向载荷转移）算附着，纵向和侧向共用摩擦圆，越过峰值变成滑动摩擦；后轮另有胎面速度状态
+# （油门大于附着就空转、手刹抱死）。车身的力和横摆全部来自这四个轮胎，抓地、漂移、横过来、倒着滑是同一套公式，
+# 没有任何把车头拉回 / 摆正的东西：甩出去要自己反打、收油，倒着滑也能一直倒着滑。
+# 悬挂、碰撞、护墙仍由上面的射线悬挂和 _walls 负责（Windows 版是 Chaos 只管悬架、碰撞）。
+
+# 合成滑移 S（峰值处为 1）对应的附着利用率：峰值前正弦上升，越过峰值衰减到滑动摩擦
+static func _curve(s: float, slide: float) -> float:
+	return sin(PI * 0.5 * s) if s <= 1.0 else slide + (1.0 - slide) * exp(-(s - 1.0) * SIM_DECAY)
+
+# 一个轮胎的纵向 / 侧向力（N）和合成滑移：sx 胎面比路面快多少（驱动为正、抱死为负），sy 接地点侧向速度（右正），
+# vl 接地点沿轮胎方向的速度。按峰值归一的合成滑移算大小、按滑移方向分配。返回 (纵向, 侧向, S)
+static func _tire(sx: float, sy: float, vl: float, capx: float, capy: float, peak_a: float, slide_lat: float) -> Vector3:
+	var vref := maxf(absf(vl), 3.0)
+	var kn := sx / vref / SIM_PEAK_K
+	var an := sy / vref / peak_a
+	var s := sqrt(kn * kn + an * an)
+	if s < 1e-4:
+		return Vector3(0.0, 0.0, s)
+	var f := _curve(s, lerpf(SIM_SLIDE_LONG, slide_lat, (an * an) / (s * s))) / s
+	return Vector3(capx * f * kn, -capy * f * an, s)
+
+static func _sim_ratio(g: int) -> float:
+	if g > 0:
+		var r: float = SIM_GEARS[g - 1]
+		return r * SIM_FINAL
+	if g < 0:
+		return SIM_REV_RATIO * SIM_FINAL
+	return 0.0
+
+# 进入拟真档（开赛、复位、传送、自动漂移交还控制后的第一帧）：后轮按当前车速滚动，挑一个不超过升挡转速的挡
+func _sim_begin(vf: float) -> void:
+	sim_on = true
+	sim_free = false
+	sim_spin = 0.0
+	sim_calm = 0.0
+	sim_prev_ok = false
+	drift_on = false
+	sim_thr = in_throttle
+	sim_ws = maxf(0.0, vf)
+	sim_gear = 1
+	for g in range(1, 7):
+		sim_gear = g
+		if sim_ws * _sim_ratio(g) * SIM_TO_RPM < SIM_UP_RPM:
+			break
+	sim_target = sim_gear
+	sim_shift_cut = 0.0
+	sim_shift_t = 0.0
+	reverse = false
+
+func _sim_end() -> void:
+	sim_on = false
+	sim_free = false
+	reverse = false
+	for i in 4:
+		sim_skid[i] = 0.0
+
+# 换挡：立即（起步、挂倒挡）或经过 0.1 秒空挡（自动升降挡，和 Chaos 一样）
+func _sim_shift(g: int, immediate: bool) -> void:
+	sim_target = g
+	if immediate:
+		sim_gear = g
+		sim_shift_cut = 0.0
+	else:
+		sim_gear = 0
+		sim_shift_cut = SIM_SHIFT_TIME
+
+# 发动机给后轮胎面的驱动力（N），ws = 胎面速度。倒挡时刹车键是油门
+func _sim_drive(ws: float) -> float:
+	if _d_ratio <= 0.0:
+		return 0.0
+	var dir := 1.0 if _d_gear > 0 else -1.0
+	var wd := ws * dir
+	var f := 0.0
+	if _d_thr > 0.02:
+		if _d_gear > 0:
+			# 与其他档同一条全油门加速度曲线（按后轮胎面速度取值，空转越快劲越小）+ 抵消风阻
+			f = MASS * accel_at(maxf(wd, 0.0) * 3.6, _d_acc, _d_top) + SIM_DRAG * _d_vx * _d_vx
+			f *= clampf((_d_wsmax - wd) / 1.5, 0.0, 1.0)     # 红线断油
+		else:
+			f = MASS * 4.5 * clampf((12.0 - wd) / 1.5, 0.0, 1.0)   # 倒车最快约 43km/h
+		f *= _d_thr
+	else:
+		f = -MASS * 0.9 * sqrt(_d_ratio / 11.16) * clampf(wd / 8.0, -1.0, 1.0)   # 松油：发动机制动，挡越高越弱
+	return f * dir
+
+# 两个后轮在胎面速度 ws 下的纵向力之和；keep 时把每个轮的纵向 / 侧向力和滑移存进 _rfl / _rft / _rs
+func _sim_rear_long(ws: float, keep: bool) -> float:
+	var sum := 0.0
+	for j in 2:
+		var fl := 0.0
+		var ft := 0.0
+		var s := 0.0
+		if _fz[2 + j] > 0.0:
+			var t := _tire(ws - _vlr[j], _vtr[j], _vlr[j], _cxr[j], _cyr[j], SIM_PEAK_AR, SIM_SLIDE_LAT_R)
+			fl = t.x
+			ft = t.y
+			s = t.z
+		if keep:
+			_rfl[j] = fl
+			_rft[j] = ft
+			_rs[j] = s
+		sum += fl
+	return sum
+
+func _sim(st: PhysicsDirectBodyState3D, dt: float, gup: Vector3, fwd: Vector3, right: Vector3, vt: Vector3, vx: float, vy: float) -> void:
 	var grip: float = info.get("grip", 1.0)
-	var cacc: float = info.get("accel", 1.0)
-	var psi := -beta if speed > 2.0 else 0.0     # 车头相对行进方向，右正
-	var yd := rad_to_deg(yaw)
-	if not sim_free:
-		if not (forward and kmh > 30.0 and in_hand and absf(in_steer) > 0.18):
-			sim_psi = psi
-			return false
-		sim_free = true
-		sim_rate = clampf(yd - path_rate, -60.0, 60.0)
-		sim_spin = 0.0
-		sim_psi = psi
-		sim_air = 0.0
-	sim_air = 0.0
-	var pp := sim_psi
-	sim_spin += wrapf(psi - pp, -180.0, 180.0)
+	var agil: float = info.get("agility", 1.0)
+	var r := -st.angular_velocity.dot(gup)          # 横摆角速度 rad/s，右转为正
+	var iz := MASS * SIM_YAW_K / clampf(agil, 0.6, 1.6)
+	var v := Vector2(vx, vy).length()
+	# 风阻（驱动力里等量补回，全油门直线和其他档一样快；松油时它和发动机制动让车慢下来）
+	st.apply_central_force(-vt * SIM_DRAG * speed)
+
+	# 触屏 / 键盘油门是 0/1：0.25 秒推满，松得更快（只是输入平滑，不限制出力）
+	sim_thr = move_toward(sim_thr, in_throttle, dt * (4.0 if in_throttle > sim_thr else 8.0))
+	# 车身坐标加速度（含转动项），低通后算载荷转移
+	if sim_prev_ok:
+		var ax := (vx - sim_prev_vx) / dt - r * vy
+		var ay := (vy - sim_prev_vy) / dt + r * vx
+		var kf := 1.0 - exp(-dt / 0.07)
+		sim_ax += (clampf(ax, -25.0, 25.0) - sim_ax) * kf
+		sim_ay += (clampf(ay, -25.0, 25.0) - sim_ay) * kf
+	sim_prev_vx = vx
+	sim_prev_vy = vy
+	sim_prev_ok = true
+
+	# ---- 换挡状态（换挡中是空挡）
+	if sim_shift_cut > 0.0:
+		sim_shift_cut -= dt
+		if sim_shift_cut <= 0.0:
+			sim_gear = sim_target
+	var gear_now := sim_gear
+
+	# ---- 只统计不干预：车头相对行进方向的角度、是否横着滑、转满一圈记 360
+	var psi := -beta if speed > 2.0 else 0.0
+	var apsi := absf(psi)
+	if sim_free:
+		sim_spin += wrapf(psi - sim_psi, -180.0, 180.0)
 	sim_psi = psi
-	var ap := absf(psi)
-	var caught := not in_hand and ap < 60.0 and (pp * psi < 0.0 or (ap < 5.0 and absf(sim_rate) < 30.0))
-	if absf(sim_spin) > 325.0 and ap < 45.0:
+	var reversing := gear_now < 0 and vx < 0.5     # 挂倒挡倒车不算滑
+	if v > 4.0 and apsi > (10.0 if sim_free else 22.0) and not reversing:
+		sim_free = true
+		sim_calm = 0.0
+	elif sim_free:
+		sim_calm += dt
+		if sim_calm > 0.4 or v < 3.0 or reversing:
+			sim_free = false
+			sim_spin = 0.0
+	if absf(sim_spin) > 325.0 and apsi < 45.0:
 		sim_spin -= signf(sim_spin) * 360.0
 		spin_done.emit()
-	if caught or kmh < 12.0:
-		sim_free = false
-		sim_rate = 0.0
-		if caught:
-			assist_t = maxf(assist_t, 0.30)
-		return false
-	var sp := clampf(speed / 13.0, 0.25, 1.0)
-	var kk := 515.0 * sp
-	var into := steer * psi >= 0.0
-	var tq := 0.0
-	if in_hand:
-		tq = steer * kk * 1.62 * cdrift
-	elif into:
-		tq = steer * kk * lerpf(0.30, 0.76, in_throttle) * cdrift
+
+	# ---- 方向：只按玩家输入。车速越高可用转角越小（满舵也不至于一下打过轮胎极限）；
+	#      车已经横过来时，往前轴实际行进的方向打（反打）可以打到前轮对准行进方向再多一点，但绝不自己反打
+	var max_wheel := 38.0
+	var vs := maxf(v, 1.0)
+	var brk_term := in_throttle if gear_now < 0 else in_brake
+	var margin := lerpf(7.0, 3.0, clampf((v - 25.0) / 45.0, 0.0, 1.0)) if v < 70.0 else lerpf(3.0, 2.0, clampf((v - 70.0) / 25.0, 0.0, 1.0))
+	margin *= lerpf(1.0, 0.6, clampf(brk_term * clampf((v - 15.0) / 25.0, 0.0, 1.0), 0.0, 1.0))
+	var lim := clampf(rad_to_deg(atan(SIM_L * SIM_MU_LAT_F * grip * SIM_G / (vs * vs))) + margin, 1.5, max_wheel)
+	if vx > 0.5:
+		var front_ang := rad_to_deg(atan2(vy + SIM_A * r, vx))   # 前轴往哪走（相对车头，右正）
+		if steer * front_ang > 0.0:
+			lim = maxf(lim, minf(absf(front_ang) + 8.0, max_wheel))
 	else:
-		tq = steer * kk * 0.85
-	var al := -kk * sin(deg_to_rad(psi))
-	var dm := 1.5 if in_hand else lerpf(3.6, 0.9, clampf((ap - 55.0) / 25.0, 0.0, 1.0))
-	sim_rate += (tq + al - dm * sim_rate) * dt
-	sim_rate = clampf(sim_rate, -345.0, 345.0)
-	if not in_hand and sim_rate * psi < 0.0:
-		var cap := 5.2 * ap + 22.0
-		sim_rate = clampf(sim_rate, -cap, cap)
-	var sinp := sin(deg_to_rad(psi))
-	var cosp := cos(deg_to_rad(psi))
-	var lat := sinp * lerpf(5.0, 14.0, in_throttle) * lerpf(1.0, grip, 0.6) * clampf(speed / 14.0, 0.3, 1.0)
-	path_rate = lerpf(path_rate, rad_to_deg(lat / maxf(speed, 5.0)), 1.0 - exp(-7.0 * dt))
-	var tn := in_throttle * cacc * lerpf(8.0, 1.0, clampf((speed - 15.0) / 38.0, 0.0, 1.0)) * maxf(cosp, -0.35) - 1.6 * absf(sinp) - 0.4 - (1.6 if in_hand else 0.0) - in_brake * 9.0 - (1.0 - in_throttle) * 1.5
-	accel_f = lerpf(accel_f, clampf(tn, -12.0, 15.0), 1.0 - exp(-8.0 * dt))
-	var nd := dirv.rotated(gup, -deg_to_rad(path_rate) * dt)
-	st.linear_velocity = nd * maxf(0.0, vt.length() + accel_f * dt) + vn
-	var want := deg_to_rad(path_rate + sim_rate)
-	st.angular_velocity = w - gup * ((want - yaw) * (1.0 - exp(-30.0 * dt)))
-	steer_vis = clampf(deg_to_rad(-psi) + steer * 0.16, -MAX_STEER, MAX_STEER) if ap < 95.0 else steer * 0.4
-	skid = clampf((ap - 6.0) / 22.0, 0.0, 1.0)
-	st.apply_central_force(-gup * minf(0.0009 * speed * speed, 5.0) * MASS)
-	return true
+		lim = max_wheel * 0.8       # 倒车、倒着滑：方向随便打
+	sim_steer_lim = lim
+	var steer_deg := steer * lim
+
+	# ---- 传动：停住按住刹车挂倒挡，倒挡里按油门挂回一挡，空挡起步挂一挡
+	if gear_now >= 0 and absf(vx) < 1.0 and in_brake > 0.3 and in_throttle < 0.1:
+		_sim_shift(-1, true)
+	elif gear_now < 0 and in_throttle > 0.3 and vx > -1.0:
+		_sim_shift(1, true)
+	elif gear_now == 0 and sim_target == 0 and in_throttle > 0.1 and in_brake < 0.3:
+		_sim_shift(1, true)
+	# 自动挡：按后轮实际转速（空转时比车速快）升降挡，和真车的自动挡一样漂移时会升挡
+	sim_shift_t += dt
+	if gear_now > 0:
+		var rpm_now := absf(sim_ws) * _sim_ratio(gear_now) * SIM_TO_RPM
+		if sim_shift_t > 0.35 and rpm_now > SIM_UP_RPM and gear_now < SIM_GEARS.size():
+			_sim_shift(gear_now + 1, false)
+			sim_shift_t = 0.0
+		elif sim_shift_t > 0.6 and sim_hand_t > 0.5 and gear_now > 1 and rpm_now < SIM_DOWN_RPM and rpm_now * _sim_ratio(gear_now - 1) / _sim_ratio(gear_now) < SIM_REDLINE * 0.9:
+			_sim_shift(gear_now - 1, false)
+			sim_shift_t = 0.0
+	var ratio := _sim_ratio(gear_now)
+	var to_rpm := ratio * SIM_TO_RPM
+	_d_ratio = ratio
+	_d_gear = gear_now
+	_d_wsmax = SIM_REDLINE / to_rpm if ratio > 0.0 else 0.0
+	_d_thr = in_brake if gear_now < 0 else sim_thr
+	_d_vx = maxf(vx, 0.0)
+	_d_acc = info.get("accel", 1.0)
+	_d_top = info.get("top", 360.0)
+	var brake_f := MASS * SIM_BRAKE_ACCEL * (in_throttle if gear_now < 0 else in_brake)
+	var rpm_ratio := ratio if ratio > 0.0 else _sim_ratio(sim_target)
+
+	# ---- 载荷：车重 + 下压按静态比例分配，再加纵向 / 横向载荷转移；离地的轮子不出力
+	var nin := 0
+	for i in 4:
+		nin += 1 if wheel_on[i] != 0 else 0
+	if nin == 0:
+		# 四轮离地：后轮照样被油门带着转、被手刹停住，车身不受轮胎力
+		sim_ws = 0.0 if in_hand else sim_ws + dt * _sim_drive(sim_ws) / SIM_REAR_INERTIA
+		sim_rpm = clampf(absf(sim_ws) * rpm_ratio * SIM_TO_RPM, 900.0, SIM_REDLINE)
+		for i in 4:
+			sim_skid[i] = 0.0
+		_sim_out(steer_deg)
+		return
+	var down := minf(0.0009 * v * v, 6.0)
+	var n := MASS * (SIM_G + down) * (1.0 if nin >= 3 else (0.85 if nin == 2 else 0.5))
+	var ld_scale := n / (MASS * SIM_G)
+	var dlong := MASS * sim_ax * SIM_COMH / SIM_L * ld_scale                 # 加速时后轴加载
+	var dlatf := MASS * sim_ay * SIM_COMH / SIM_TRACK_F * SIM_ROLL_F * ld_scale  # 右转时左侧（外侧）加载
+	var dlatr := MASS * sim_ay * SIM_COMH / SIM_TRACK_R * (1.0 - SIM_ROLL_F) * ld_scale
+	_fz[0] = n * SIM_B / SIM_L * 0.5 - dlong * 0.5 + dlatf
+	_fz[1] = n * SIM_B / SIM_L * 0.5 - dlong * 0.5 - dlatf
+	_fz[2] = n * SIM_A / SIM_L * 0.5 + dlong * 0.5 + dlatr
+	_fz[3] = n * SIM_A / SIM_L * 0.5 + dlong * 0.5 - dlatr
+	var masked := 0.0
+	for i in 4:
+		_fz[i] = maxf(_fz[i], 0.02 * n) if wheel_on[i] != 0 else 0.0
+		masked += _fz[i]
+	for i in 4:
+		_fz[i] *= n / maxf(masked, 1.0)
+
+	var fx := 0.0
+	var fy := 0.0
+	var mz := 0.0
+	var inv_m := 1.0 / MASS
+
+	# ---- 前轮：自由滚动，带 ABS 的刹车按摩擦圆分走纵向附着
+	var delta := deg_to_rad(steer_deg)
+	var cd := cos(delta)
+	var sd := sin(delta)
+	for i in 2:
+		sim_skid[i] = 0.0
+		if _fz[i] <= 0.0:
+			continue
+		var px: float = SIM_PX[i]
+		var py: float = SIM_PY[i]
+		var wx := vx - r * py
+		var wy := vy + r * px
+		var vl := wx * cd + wy * sd
+		var vtt := -wx * sd + wy * cd
+		var sens := clampf(1.0 - SIM_LOAD_SENS * (_fz[i] / (MASS * SIM_G * SIM_B / SIM_L * 0.5) - 1.0), 0.75, 1.15)
+		var capx := SIM_MU_LONG_F * grip * sens * _fz[i]
+		var capy := SIM_MU_LAT_F * grip * sens * _fz[i]
+		var t := _tire(0.0, vtt, vl, capx, capy, SIM_PEAK_AF, SIM_SLIDE_LAT_F)
+		var flong := t.x
+		var flat := t.y
+		if brake_f > 0.0 and absf(vl) > 0.05:
+			var u := minf(brake_f * SIM_BRAKE_FRONT * 0.5 / maxf(capx, 1.0), 0.95)
+			flong = _stop_clamp(-signf(vl) * u * capx, vl, py, dt, inv_m, iz)
+			flat *= sqrt(1.0 - u * u)
+		flat = _stop_clamp(flat, vtt, px, dt, inv_m, iz)
+		sim_skid[i] = clampf((t.z - 1.2) / 2.0, 0.0, 1.0)
+		var fxw := flong * cd - flat * sd
+		var fyw := flong * sd + flat * cd
+		fx += fxw
+		fy += fyw
+		mz += px * fyw - py * fxw
+
+	# ---- 后轮：两轮共用一个胎面速度（限滑差速），按发动机、刹车和地面反力积分；手刹抱死
+	for j in 2:
+		var i: int = 2 + j
+		var px2: float = SIM_PX[i]
+		var py2: float = SIM_PY[i]
+		_vlr[j] = vx - r * py2
+		_vtr[j] = vy + r * px2
+		var sens2 := clampf(1.0 - SIM_LOAD_SENS * (_fz[i] / (MASS * SIM_G * SIM_A / SIM_L * 0.5) - 1.0), 0.75, 1.15)
+		_cxr[j] = SIM_MU_LONG_R * grip * sens2 * _fz[i]
+		_cyr[j] = SIM_MU_LAT_R * grip * sens2 * _fz[i]
+	var nsub := clampi(ceili(dt / 0.0015), 4, 16)
+	var h := dt / float(nsub)
+	var rear_brake := minf(brake_f * (1.0 - SIM_BRAKE_FRONT), SIM_REAR_BRAKE_CAP * (_cxr[0] + _cxr[1]) * sqrt(maxf(0.1, 1.0 - sim_rear_lat * sim_rear_lat)))
+	# 牵引力控制（像地平线默认那样）：只限油门，从不转车头。按后轮实际的侧偏角算附着圆里还剩多少纵向，
+	# 驱动力只给到合成滑移为峰值 90% 的那么多；后轮已经横着滑时也不放开，只许一点空转（SIM_TCS_SLIP × 峰值滑移率）。
+	# 只有拉着手刹时不限（手刹甩尾、360 照做，松手刹 0.1 秒后恢复）；想用油门漂移就在设置里关掉
+	sim_hand_t = 0.0 if in_hand else sim_hand_t + dt
+	var use_tcs := tcs and sim_hand_t > SIM_TCS_HAND and gear_now > 0
+	var tcs_cap := 1e9
+	if use_tcs:
+		tcs_cap = 0.0
+		for j in 2:
+			if _fz[2 + j] <= 0.0:
+				continue
+			var an := absf(_vtr[j]) / maxf(absf(_vlr[j]), 3.0) / SIM_PEAK_AR
+			var kn := maxf(sqrt(maxf(0.0, 0.81 - an * an)), SIM_TCS_SLIP)
+			var s := sqrt(kn * kn + an * an)
+			tcs_cap += _cxr[j] * _curve(s, lerpf(SIM_SLIDE_LONG, SIM_SLIDE_LAT_R, an * an / (s * s))) * kn / s
+	sim_tcs_cap = tcs_cap if use_tcs else -1.0
+	# 关掉牵引力控制时后轮空转的上限：车身正着时只许中等空转，车尾横得越多许得越多（油门照样能甩尾、保持漂移）。
+	# 拉手刹起的横滑（玩家自己要漂、要原地转圈）许得多；出弯给油、被撞歪这种不是自己要的横滑许得少，能救回来
+	if in_hand:
+		sim_hand_slide = true
+	elif not sim_free and sim_hand_t > 1.0:
+		sim_hand_slide = false
+	var gain := SIM_SPIN_GAIN_HAND if sim_hand_slide else SIM_SPIN_GAIN
+	var ws_lim := 1e9
+	if not use_tcs and gear_now > 0 and not in_hand:
+		ws_lim = -1e9
+		for j in 2:
+			if _fz[2 + j] <= 0.0:
+				continue
+			var vref := maxf(absf(_vlr[j]), 3.0)
+			var an2 := absf(_vtr[j]) / vref / SIM_PEAK_AR
+			ws_lim = maxf(ws_lim, _vlr[j] + (SIM_SPIN_BASE + gain * an2) * SIM_PEAK_K * vref)
+		if ws_lim < -1e8:
+			ws_lim = 1e9
+	var ws := sim_ws
+	var acc_fl0 := 0.0
+	var acc_fl1 := 0.0
+	var acc_ft0 := 0.0
+	var acc_ft1 := 0.0
+	var max_s0 := 0.0
+	var max_s1 := 0.0
+	for k in nsub:
+		if in_hand:
+			ws = 0.0
+		var fl_sum := _sim_rear_long(ws, true)
+		acc_fl0 += _rfl[0] / float(nsub)
+		acc_fl1 += _rfl[1] / float(nsub)
+		acc_ft0 += _rft[0] / float(nsub)
+		acc_ft1 += _rft[1] / float(nsub)
+		max_s0 = maxf(max_s0, _rs[0])
+		max_s1 = maxf(max_s1, _rs[1])
+		if in_hand:
+			continue
+		# 半隐式：按当地刚度放大惯量，低速时轮胎很“硬”也不会来回震荡
+		var stiff := maxf(0.0, (_sim_rear_long(ws + 0.05, false) - fl_sum) / 0.05)
+		var drive := minf(_sim_drive(ws), tcs_cap)
+		if ws >= ws_lim and drive > 0.0:
+			drive = 0.0          # 超过空转上限就断油，让地面把轮子拖回来
+		var wn := ws + h * (drive - fl_sum) / (SIM_REAR_INERTIA + h * stiff)
+		if rear_brake > 0.0:
+			var dec := h * rear_brake / SIM_REAR_INERTIA
+			wn = maxf(0.0, wn - dec) if wn > 0.0 else minf(0.0, wn + dec)   # 刹车只让轮子停下，不会倒转
+		if ws < ws_lim and wn > ws_lim:
+			wn = ws_lim
+		ws = wn
+	sim_ws = 0.0 if in_hand else ws
+	sim_rear_lat = clampf(maxf(absf(acc_ft0) / maxf(_cyr[0], 1.0), absf(acc_ft1) / maxf(_cyr[1], 1.0)), 0.0, 1.0)
+	# 差速器左右等分扭矩（按载荷分时稍一转弯外侧推得更狠，车会越转越急）
+	if not in_hand and _fz[2] > 0.0 and _fz[3] > 0.0:
+		acc_fl0 = 0.5 * (acc_fl0 + acc_fl1)
+		acc_fl1 = acc_fl0
+	for j in 2:
+		var i: int = 2 + j
+		var px3: float = SIM_PX[i]
+		var py3: float = SIM_PY[i]
+		var ms := max_s0 if j == 0 else max_s1
+		var fl2 := acc_fl0 if j == 0 else acc_fl1
+		var ft2 := acc_ft0 if j == 0 else acc_ft1
+		if _fz[i] <= 0.0:
+			sim_skid[i] = 0.0
+			continue
+		sim_skid[i] = 1.0 if (in_hand and v > 5.0) else clampf((ms - 1.2) / 2.0, 0.0, 1.0)
+		if in_hand:
+			fl2 = _stop_clamp(fl2, _vlr[j], py3, dt, inv_m, iz)
+		ft2 = _stop_clamp(ft2, _vtr[j], px3, dt, inv_m, iz)
+		fx += fl2
+		fy += ft2
+		mz += px3 * ft2 - py3 * fl2
+	sim_rpm = clampf(absf(sim_ws) * rpm_ratio * SIM_TO_RPM, 900.0, SIM_REDLINE)
+
+	# ---- 施力：平移力加在质心，横摆按轮胎力矩积分（不覆盖碰撞等带来的角速度）
+	st.apply_central_force(fwd * fx + right * fy)
+	st.angular_velocity = st.angular_velocity - gup * (mz / iz * dt)
+	# 高速下压（与其他档一致），过坡不发飘
+	st.apply_central_force(-gup * minf(0.0009 * v * v, 6.0) * MASS)
+	_sim_out(steer_deg)
+
+# 数值稳定：一帧内一个轮子的力不超过把它接地点相对速度刹停所需（低速、静止时不抖）
+static func _stop_clamp(f: float, vrel: float, lever: float, dt: float, inv_m: float, iz: float) -> float:
+	var lim := 0.22 * absf(vrel) / (dt * (inv_m + lever * lever / iz))
+	return clampf(f, -lim, lim)
+
+# 给画面、声音、计分用的量
+func _sim_out(steer_deg: float) -> void:
+	steer_vis = deg_to_rad(steer_deg)
+	path_rate = rad_to_deg(sim_ay / maxf(speed, 5.0))
+	accel_f = sim_ax
+	var sk := 0.0
+	for i in 4:
+		sk = maxf(sk, sim_skid[i])
+	skid = sk
+	reverse = sim_gear < 0 or (sim_gear == 0 and sim_target < 0)
 
 func _walls(st: PhysicsDirectBodyState3D) -> void:
 	var xf := st.transform
@@ -731,6 +1163,13 @@ func _contacts(st: PhysicsDirectBodyState3D) -> void:
 
 # ------------------------------------------------------------------ 发动机（声音和转速表用）
 func _engine(dt: float) -> void:
+	if sim_on:
+		# 拟真档：挡位和转速来自轮胎模型（后轮空转时转速跟着冲高）
+		gear = -1 if reverse else maxi(1, sim_target if sim_gear == 0 else sim_gear)
+		var want := sim_rpm - (900.0 if sim_shift_cut > 0.0 else 0.0)
+		rpm = lerpf(rpm, maxf(900.0, want), 1.0 - exp(-14.0 * dt))
+		boost = lerpf(boost, in_throttle * clampf((rpm - 2400.0) / 5000.0, 0.0, 1.0), 1.0 - exp(-4.0 * dt))
+		return
 	var top: float = info.get("top", 360.0)
 	var ratios := [0.0, 0.20, 0.34, 0.50, 0.68, 0.85, 1.04]
 	shift_t = maxf(0.0, shift_t - dt)

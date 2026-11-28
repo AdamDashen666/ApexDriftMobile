@@ -11,6 +11,7 @@ static var assist := 0
 static var steer_mode := 0       # 0 滑动 1 按键 2 重力感应
 static var steer_sens := 1.0
 static var auto_throttle := false
+static var tcs := true          # 拟真档牵引力控制
 static var quality := 1
 static var show_fps := true
 static var sound := true
@@ -37,6 +38,7 @@ static func load_cfg() -> void:
 	steer_mode = clampi(c.get_value("s", "steer_mode", steer_mode), 0, 2)
 	steer_sens = clampf(c.get_value("s", "steer_sens", steer_sens), 0.5, 2.0)
 	auto_throttle = c.get_value("s", "auto_throttle", auto_throttle)
+	tcs = c.get_value("s", "tcs", tcs)
 	quality = clampi(c.get_value("s", "quality", quality), 0, 2)
 	show_fps = c.get_value("s", "show_fps", show_fps)
 	sound = c.get_value("s", "sound", sound)
@@ -57,6 +59,7 @@ static func store() -> void:
 	c.set_value("s", "steer_mode", steer_mode)
 	c.set_value("s", "steer_sens", steer_sens)
 	c.set_value("s", "auto_throttle", auto_throttle)
+	c.set_value("s", "tcs", tcs)
 	c.set_value("s", "quality", quality)
 	c.set_value("s", "show_fps", show_fps)
 	c.set_value("s", "sound", sound)
