@@ -23,7 +23,7 @@
 - 手动触发 workflow 时 iOS 和安卓都出。Windows 上不在本机运行 Godot（权限不允许），全部在 CI 上跑；`scripts/ci-run.sh` 推送并等构建、下载产物到 `out/<run_id>/`。
 
 ## 当前状态
-- 最新包：run 46131199240（2026-11-28，当前代码，含拟真档轮胎物理 + 牵引力控制）：iOS 未签名 IPA 约 92MB（iOS 16+，A12 起，`out/46131199240/ios-app/`），安卓 APK 约 145MB（versionCode 19，调试签名，`out/46131199240/android-apk/`）；逻辑测试全过，macOS Metal 截图正常。上一版（旧操控）是 run 46105249531，首个 iOS 包是 run 45689037016。
+- 最新包：run 46132975896（2026-11-28，当前代码，拟真档 = Windows v2.9）：iOS 未签名 IPA 约 92MB（iOS 16+，A12 起，`out/46132975896/ios-app/`），安卓 APK 约 145MB（versionCode 20，调试签名，`out/46132975896/android-apk/`）；逻辑测试全过，macOS Metal 截图正常。旧操控的最后一版是 run 46105249531，首个 iOS 包是 run 45689037016。
 - 已同步 Windows v2.6–v2.9 的操控：拟真档轮胎物理 + 设置“牵引力控制”（拟真档起作用，默认开；开 = 平时不会被油门甩尾，手刹起漂后可以用油门续漂）。v2.6 另两个修复移动版不需要：复位 bug 是 UE Chaos `ResetVehicleState` 特有的（移动版没有 Chaos、没有手动挡），第 4 张地图卡移动版本来就能点；两者都加了测试。DLSS 不适用。
 - 拟真档 CI 数值（APEX GT，平地）：牵引力控制开 0-100 3.44s、S60/S120/S180 侧滑 2.2°/3.8°/3.9°、55km/h 全油门满舵 2.1°、150km/h 全刹 0°、手刹一甩全松转到 182°（倒着滑，不拉回）、按住手刹满舵 1.2s 转 184°、手刹一甩再油门满舵能甩圈（横滑中不限油门，稳住后恢复）；关：直线全油门不转圈（0-100 3.48s）、55km/h 全油门满舵甩到 58°、手刹一甩再油门满舵 4 秒转约一圈。
 - 安卓 v1.0 已交付（最终绿灯 run 45824639448，APK 在 `out/45824639448/android-apk/`）：APK 约 138MB（其中 libgodot_android.so 71MB 不压缩存放），versionName 1.0，最低 Android 10（API 29），target 36，只有 arm64-v8a，权限只有 VIBRATE，横屏 userLandscape，gradle 构建。
