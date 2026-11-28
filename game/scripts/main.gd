@@ -65,7 +65,6 @@ func _ready() -> void:
 	score.callout.connect(func(s: String, k: int): ui.show_callout(s, k))
 	score.cue.connect(func(n: String): sfx.play(n, -6.0))
 	car.set_car(Save.car, int(Save.paints[Save.car]))
-	car.tcs = Save.tcs
 	get_tree().root.size_changed.connect(func(): ui._safe())
 	for a in args:
 		if a == "--autotest":
@@ -168,7 +167,6 @@ func start_race(auto: bool) -> void:
 	fx.clear()
 	score.reset()
 	car.assist = Save.assist
-	car.tcs = Save.tcs
 	car.locked = true
 	auto_pending = auto
 	count = 3.0
@@ -450,11 +448,6 @@ func _on_action(id: String) -> void:
 		"set_gas":
 			Save.auto_throttle = v == 1
 			Save.store()
-		"set_tcs":
-			# 暂停里改也立即生效
-			Save.tcs = v == 0
-			car.tcs = Save.tcs
-			Save.store()
 		"set_q":
 			Save.quality = v
 			world.set_quality(v)
@@ -540,106 +533,106 @@ func _sim_at(kmh: float) -> void:
 	await hold(0.3, 1.0 if kmh > 0.0 else 0.0, 0, 0, false)
 	_trk_reset()
 
-# 拟真档轮胎物理：对照 Windows 版 v2.8 的 -ApexBenchSim / -ApexBenchGrip 场景
+# 拟真档（v2.5 的做法 + v2.10 的倒着滑）：对照 Windows 版 -ApexBenchSim / -ApexBenchGrip 的场景
 func _sim_tests() -> void:
 	car.set_car(0, 0)
 	car.assist = 2
-	for tc in [true, false]:
-		car.tcs = tc
-		var tg := "拟真/牵引力控制%s" % ("开" if tc else "关")
-		# 直线全油门起步：不转圈（Windows 版 0-100 3.3s，牵引力控制关也不转圈）
-		await _sim_at(0.0)
-		var t100 := -1.0
-		for i in 600:
-			await _run(1.0 / 120.0, 1, 0, 0, false)
-			if t100 < 0.0 and car.kmh >= 100.0:
-				t100 = (i + 1) / 120.0
-		_ck(t100 > 0.0 and t100 < 4.6 and _mxb < 3.0 and _flat(), "%s 直线全油门：0-100 %.2fs 最大侧滑 %.1f° 5 秒 %.0fkm/h %d 挡" % [tg, t100, _mxb, car.kmh, car.gear])
-		# 平时打方向（Windows 版 S60 / S120 / S180 小舵量场景）：侧滑都要 < 5°
-		await _sim_at(60.0)
-		await _run(0.25, 1, 0, 1, false)
-		await _run(2.0, 1, 0, 0, false)
-		await _run(1.0, 1, 0, 0.4, false)
-		await _run(2.0, 1, 0, 0, false)
-		var s60 := _mxb
-		var f60 := _flat()
-		await _sim_at(120.0)
-		await _run(1.0, 0.6, 0, 1, false)
-		await _run(2.0, 1, 0, 0, false)
-		var s120 := _mxb
-		var f120 := _flat()
-		await _sim_at(180.0)
-		await _run(0.25, 1, 0, 1, false)
-		await _run(0.25, 1, 0, -1, false)
-		await _run(2.0, 1, 0, 0, false)
-		await _run(1.5, 1, 0, 1, false)
-		await _run(2.5, 1, 0, 0, false)
-		var sline := "%s 平时打方向（全油门）最大侧滑 S60 %.1f° S120 %.1f° S180 %.1f°（结束 %.0fkm/h）" % [tg, s60, s120, _mxb, car.kmh]
-		if tc:
-			_ck(s60 < 5.0 and s120 < 5.0 and _mxb < 5.0 and f60 and f120 and _flat(), sline)
-		else:
-			# Windows 版“侧滑 <5°”是按默认（牵引力控制开）要求的；关掉后全油门本来就能把车尾踩出去，只记录
-			print("  info " + sline)
-		# 低速全油门满舵（出弯给油）：开着牵引力控制不甩，关掉能用油门甩尾
-		await _sim_at(55.0)
-		await _run(2.0, 1, 0, 1, false)
-		if tc:
-			_ck(_mxb < 8.0 and _flat(), "%s 55km/h 全油门满舵 2 秒：最大侧滑 %.1f°（不甩）" % [tg, _mxb])
-		else:
-			_ck(_mxb > 10.0 and _flat(), "%s 55km/h 全油门满舵 2 秒：油门甩尾 %.1f°" % [tg, _mxb])
-		# 直线全刹：不甩
-		await _sim_at(150.0)
-		var tstop := -1.0
-		for i in 600:
-			await _run(1.0 / 120.0, 0, 1, 0, false)
-			if car.kmh < 3.0:
-				tstop = (i + 1) / 120.0
-				break
-		_ck(tstop > 0.0 and tstop < 5.0 and _mxb < 2.0, "%s 150km/h 全刹：%.2fs 停住 最大侧滑 %.1f°" % [tg, tstop, _mxb])
-		# 按住手刹满舵（Windows 版通常停在约 150°）
-		await _sim_at(120.0)
-		await _run(1.2, 1, 0, 1, true)
-		await _run(3.0, 1, 0, 0, false)
-		_ck(_pk > 90.0 and _flat(), "%s 120km/h 手刹+满舵 1.2s：车头最多转过 %.0f° 结束 %.0fkm/h" % [tg, _pk, car.kmh])
-	# 手刹一甩再全油门满舵（Windows 版约一圈）。v2.9 起牵引力控制开着也一样：拉手刹起的横滑期间不限油门，
-	# 车身稳住 1 秒后恢复；中间那段检查牵引力控制确实没在限，最后松手停稳再直线给油，检查它回来了（只在开着时）
-	for tc in [true, false]:
-		car.tcs = tc
-		var tg2 := "拟真/牵引力控制%s" % ("开" if tc else "关")
-		await _sim_at(70.0)
-		var sp0 := spins_seen
-		await _run(0.4, 0.5, 0, 1, true)
-		await _run(1.0, 1, 0, 1, false)
-		var free_mid := car.sim_hand_slide and car.sim_tcs_cap < 0.0
-		await _run(3.0, 1, 0, 1, false)
-		var spun := _pabs
-		await _run(3.0, 0, 0, 0, false)
-		await _run(1.5, 1, 0, 0, false)
-		var back := not car.sim_hand_slide and (car.sim_tcs_cap >= 0.0) == bool(tc)
-		_ck(spun > 270.0 and free_mid and back and _flat(), "%s 70km/h 手刹一甩再全油门满舵 4 秒：车头累计转过 %.0f°，记 360 %d 次；横滑中不限油门=%s，稳住后恢复=%s" % [tg2, spun, spins_seen - sp0, free_mid, back])
-	# 倒车：停住按住刹车挂倒挡，再按油门挂回前进
-	car.tcs = true
+	# 直线全油门起步：不侧滑
+	await _sim_at(0.0)
+	var t100 := -1.0
+	for i in 600:
+		await _run(1.0 / 120.0, 1, 0, 0, false)
+		if t100 < 0.0 and car.kmh >= 100.0:
+			t100 = (i + 1) / 120.0
+	_ck(t100 > 0.0 and t100 < 5.0 and _mxb < 2.0 and _flat(), "拟真 直线全油门：0-100 %.2fs 最大侧滑 %.1f° 5 秒 %.0fkm/h" % [t100, _mxb, car.kmh])
+	# 平时打方向（Windows 版 S60 / S120 / S180 小舵量场景）：侧滑 <5°（Windows v2.10 ≤2°）
+	await _sim_at(60.0)
+	await _run(0.25, 1, 0, 1, false)
+	await _run(2.0, 1, 0, 0, false)
+	await _run(1.0, 1, 0, 0.4, false)
+	await _run(2.0, 1, 0, 0, false)
+	var s60 := _mxb
+	var f60 := _flat()
+	await _sim_at(120.0)
+	await _run(1.0, 0.6, 0, 1, false)
+	await _run(2.0, 1, 0, 0, false)
+	var s120 := _mxb
+	var f120 := _flat()
+	await _sim_at(180.0)
+	await _run(0.25, 1, 0, 1, false)
+	await _run(0.25, 1, 0, -1, false)
+	await _run(2.0, 1, 0, 0, false)
+	await _run(1.5, 1, 0, 1, false)
+	await _run(2.5, 1, 0, 0, false)
+	_ck(s60 < 5.0 and s120 < 5.0 and _mxb < 5.0 and f60 and f120 and _flat(), "拟真 平时打方向（全油门）最大侧滑 S60 %.1f° S120 %.1f° S180 %.1f°（结束 %.0fkm/h）" % [s60, s120, _mxb, car.kmh])
+	# 出弯给油：低速全油门满舵，车身稳定不让车滑出去
+	await _sim_at(55.0)
+	await _run(2.0, 1, 0, 1, false)
+	_ck(_mxb < 6.0 and not car.sim_free and _flat(), "拟真 55km/h 全油门满舵 2 秒：最大侧滑 %.1f°（不滑出去）" % _mxb)
+	# 直线全刹：不甩
+	await _sim_at(150.0)
+	var tstop := -1.0
+	for i in 720:
+		await _run(1.0 / 120.0, 0, 1, 0, false)
+		if car.kmh < 3.0:
+			tstop = (i + 1) / 120.0
+			break
+	_ck(tstop > 0.0 and tstop < 5.5 and _mxb < 2.0, "拟真 150km/h 全刹：%.2fs 停住 最大侧滑 %.1f°" % [tstop, _mxb])
+	# 手刹轻甩到 40° 就全松：没甩过 90°，自己转回车头朝前（v2.5 原样）
+	await _sim_at(100.0)
+	var tf := 0.0
+	while absf(car.beta) < 40.0 and tf < 2.0:
+		await _run(1.0 / 120.0, 0.5, 0, 1, true)
+		tf += 1.0 / 120.0
+	var a40 := absf(car.beta)
+	_trk_reset()
+	await _run(3.0, 0, 0, 0, false)
+	_ck(a40 >= 40.0 and _mxb < 90.0 and absf(car.beta) < 5.0 and not car.sim_free and _flat(), "拟真 100km/h 手刹甩到 %.0f° 全松 3 秒：最大 %.0f°，结束 ψ %.1f°（转回朝前）%.0fkm/h" % [a40, _mxb, absf(car.beta), car.kmh])
+	# 手刹甩到 140° 再全松：车尾朝前稳定，一直倒着滑（Windows v2.10：倒着滑满 4 秒）
+	await _sim_at(110.0)
+	tf = 0.0
+	while absf(car.beta) < 140.0 and tf < 3.0:
+		await _run(1.0 / 120.0, 0.3, 0, 1, true)
+		tf += 1.0 / 120.0
+	var a140 := absf(car.beta)
+	var rev_t := 0.0
+	for i in 480:
+		await _run(1.0 / 120.0, 0, 0, 0, false)
+		if absf(car.beta) > 140.0:
+			rev_t += 1.0 / 120.0
+	_ck(a140 >= 140.0 and rev_t > 3.5 and absf(car.beta) > 140.0 and _flat(), "拟真 110km/h 手刹甩到 %.0f°（%.2fs）后全松 4 秒：倒着滑（|ψ|>140°）%.2fs，结束 ψ %.0f° %.0fkm/h" % [a140, tf, rev_t, absf(car.beta), car.kmh])
+	# 甩起来以后只给油门 + 往弯里打：维持角度，不会自己转圈（Windows：最多维持约 50°，360 要按住手刹）
+	await _sim_at(70.0)
+	await _run(0.4, 0.5, 0, 1, true)
+	_trk_reset()
+	await _run(3.0, 1, 0, 1, false)
+	_ck(_mxb > 20.0 and _mxb < 100.0 and _pabs < 270.0 and _flat(), "拟真 70km/h 手刹一甩再全油门满舵 3 秒：最大 %.0f° 累计转过 %.0f°（维持角度，不转圈）结束 %.0fkm/h" % [_mxb, _pabs, car.kmh])
+	# 按住手刹满舵：一直转，能 360
+	await _sim_at(90.0)
+	var sp0 := spins_seen
+	await _run(2.5, 0.5, 0, 1, true)
+	var rot := _pabs
+	await _run(3.0, 0, 0, 0, false)
+	_ck(rot > 330.0 and spins_seen > sp0 and _flat(), "拟真 90km/h 按住手刹满舵 2.5 秒：车头累计转过 %.0f°，记 360 %d 次" % [rot, spins_seen - sp0])
+	# 倒车：停住按住刹车挂倒挡，再按油门前进
 	await _sim_at(0.0)
 	await _run(2.0, 0, 1, 0, false)
 	var rv := car.linear_velocity.x
-	var rg := car.gear
-	_ck(car.reverse and rg < 0 and rv < -2.0, "拟真 停车按住刹车：倒车 %.1f m/s 挡 %d" % [rv, rg])
+	_ck(car.reverse and rv < -2.0, "拟真 停车按住刹车：倒车 %.1f m/s" % rv)
 	await _run(2.0, 1, 0, 0, false)
-	_ck(car.linear_velocity.x > 1.0 and car.gear >= 1 and not car.reverse, "拟真 倒车后给油前进 %.1f m/s 挡 %d" % [car.linear_velocity.x, car.gear])
-	# 复位不能把设置换回默认（Windows 版 v2.6 修的问题：复位后轮胎摩擦 / 扭矩 / 自动挡开关回到默认）。
-	# 关掉牵引力控制、甩起来后按复位：设置保持，轮胎状态清零，重新起步正常
-	car.tcs = false
+	_ck(car.linear_velocity.x > 1.0 and not car.reverse, "拟真 倒车后给油前进 %.1f m/s" % car.linear_velocity.x)
+	# 复位不能把设置换回默认（Windows 版 v2.6 修的问题）：甩起来后按复位，手感保持、滑动状态清零，重新起步正常
 	await _sim_at(90.0)
 	await _run(0.45, 1, 0, 1, true)
+	var was_free := car.sim_free
 	st = St.PLAY
 	last_reset = -10.0
 	reset_car()
 	await ticks(3)
-	var keep_ok := not car.tcs and car.assist == 2 and car.sim_on and car.sim_ws < 0.5 and not car.sim_free and car.speed < 1.0 and car.gear == 1
+	var keep_ok := car.assist == 2 and not car.sim_free and car.speed < 1.0
 	_trk_reset()
 	await _run(2.0, 1, 0, 0, false)
-	_ck(keep_ok and _mxb < 3.0 and car.kmh > 40.0 and _flat(), "拟真 复位后设置保持（牵引力控制=%s 手感=%d）、轮胎状态清零=%s，重新起步 2 秒 %.0fkm/h 最大侧滑 %.1f°" % [car.tcs, car.assist, keep_ok, car.kmh, _mxb])
-	car.tcs = true
+	_ck(was_free and keep_ok and _mxb < 3.0 and car.kmh > 40.0 and _flat(), "拟真 甩起来时复位：手感=%d 滑动状态清零=%s，重新起步 2 秒 %.0fkm/h 最大侧滑 %.1f°" % [car.assist, keep_ok, car.kmh, _mxb])
 
 # 按界面上的按钮（真实触摸事件，和手指点一样走 Ui._input）
 func _tap(id: String) -> void:
@@ -756,15 +749,17 @@ func _autotest() -> void:
 						break
 				_ck(on and mxd > 22.0 and mxd < 70.0 and tz < 1.6, "%s 漂移角 %.0f° 保持=%s 松方向 %.2fs 回正 车速 %.0f" % [tag, mxd, on, tz, car.kmh])
 			else:
-				# 拟真（轮胎物理）：手刹一甩全松，没有任何把车头拉回的东西（Windows 版 v2.8：一直转到倒着滑）
+				# 拟真：按住手刹+满舵一直转（能 360）；松手后不拉回，3 秒后停在车头朝前或车尾朝前（倒着滑）都算稳住
 				_trk_reset()
-				await _run(0.45, 0.5, 0, 1, true)
+				await _run(0.9, 1, 0, 1, true)
+				var rot := _pabs
 				await _run(3.0, 0, 0, 0, false)
-				_ck(_pk > 70.0 and _flat(), "%s 手刹+右 0.45s 后全松：车头最多转过 %.0f°（不拉回） 结束 %.0fkm/h" % [tag, _pk, car.kmh])
+				var ap := absf(car.beta)
+				var yr := absf(rad_to_deg(car.angular_velocity.y))
+				_ck(rot > 270.0 and yr < 15.0 and (ap < 6.0 or ap > 165.0 or car.kmh < 12.0) and _flat(), "%s 手刹+满舵 0.9s 车头转过 %.0f°，松手 3 秒后 ψ %.0f° 横摆 %.0f°/s %.0fkm/h" % [tag, rot, ap, yr, car.kmh])
 	await _sim_tests()
 	car.set_car(0, 0)
 	car.assist = 0
-	car.tcs = true
 	# 倒车
 	car.teleport(Vector3(-300, 0.1, 20), 0.0)
 	await ticks(60)
@@ -840,7 +835,7 @@ func _autotest() -> void:
 	_ck(perf.target == 120.0 and sc60 > 0.6, "恢复高刷：目标 %.0f 比例 %.2f" % [perf.target, sc60])
 	perf.setup(Save.quality)
 	# 存档写读一遍（平时测试不落盘）
-	var keep := [Save.map, Save.car, Save.paints.duplicate(), Save.weather.duplicate(), Save.best.duplicate(), Save.steer_sens, Save.tcs]
+	var keep := [Save.map, Save.car, Save.paints.duplicate(), Save.weather.duplicate(), Save.best.duplicate(), Save.steer_sens]
 	Save.persist = true
 	Save.path = "user://apex_test.cfg"
 	Save.map = 2
@@ -848,7 +843,6 @@ func _autotest() -> void:
 	Save.paints[3] = 6
 	Save.weather[2] = 1
 	Save.steer_sens = 1.35
-	Save.tcs = false
 	Save.best = {"FujiSakura_0": 12345.0}
 	Save.store()
 	Save.map = 0
@@ -857,9 +851,8 @@ func _autotest() -> void:
 	Save.weather = [0, 0, 0, 0]
 	Save.best = {}
 	Save.steer_sens = 1.0
-	Save.tcs = true
 	Save.load_cfg()
-	_ck(Save.map == 2 and Save.car == 3 and int(Save.paints[3]) == 6 and int(Save.weather[2]) == 1 and is_equal_approx(Save.steer_sens, 1.35) and not Save.tcs and is_equal_approx(float(Save.best.get("FujiSakura_0", 0.0)), 12345.0), "存档写读")
+	_ck(Save.map == 2 and Save.car == 3 and int(Save.paints[3]) == 6 and int(Save.weather[2]) == 1 and is_equal_approx(Save.steer_sens, 1.35) and is_equal_approx(float(Save.best.get("FujiSakura_0", 0.0)), 12345.0), "存档写读")
 	Save.persist = false
 	Save.map = keep[0]
 	Save.car = keep[1]
@@ -867,13 +860,11 @@ func _autotest() -> void:
 	Save.weather = keep[3]
 	Save.best = keep[4]
 	Save.steer_sens = keep[5]
-	Save.tcs = keep[6]
 	# 界面：所有按钮走一遍
 	external = false
-	for sid in ["help", "back", "settings", "credits", "back2", "set_steer:1", "set_steer:2", "set_steer:0", "set_gas:1", "set_gas:0", "set_tcs:1", "set_tcs:0", "set_q:0", "set_q:2", "set_q:1", "set_fps:0", "set_fps:1", "set_hap:0", "set_hap:1", "back", "car:1", "car:-1", "paint:3", "mode:1", "mode:0", "assist:2", "assist:0", "weather:1", "weather:2", "weather:0"]:
+	for sid in ["help", "back", "settings", "credits", "back2", "set_steer:1", "set_steer:2", "set_steer:0", "set_gas:1", "set_gas:0", "set_q:0", "set_q:2", "set_q:1", "set_fps:0", "set_fps:1", "set_hap:0", "set_hap:1", "back", "car:1", "car:-1", "paint:3", "mode:1", "mode:0", "assist:2", "assist:0", "weather:1", "weather:2", "weather:0"]:
 		_on_action(sid)
 		await ticks(2)
-	_ck(Save.tcs and car.tcs, "设置：牵引力控制开关后回到开")
 	# 主菜单地图卡片：用真实触摸逐张点（Windows 版 v2.6 修过第 4 张卡片点不了），点开始确认进的是训练场
 	goto_menu()
 	for mi in [0, 3]:

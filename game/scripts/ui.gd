@@ -620,12 +620,10 @@ func _draw_settings() -> void:
 	_skew(Rect2(x, 74, 120, 4), accent, 0.5)
 	var cx := x + 320
 	var cw := 480.0
-	# 8 行：行距 56，最后一行到 y≈530，底下留给返回按钮
-	var y := 90.0
-	var dy := 56.0
+	var y := 96.0
 	_row(y, "转向方式", "滑动：左半屏按住左右拖；重力：倾斜手机", x)
 	_seg("set_steer", ["滑动", "按键", "重力"], Save.steer_mode, Rect2(cx, y, cw, 42))
-	y += dy
+	y += 62
 	_row(y, "转向灵敏度", "%.2f" % Save.steer_sens, x)
 	var sr := Rect2(cx, y + 6, cw, 30)
 	_b("slider:sens", sr)
@@ -633,27 +631,19 @@ func _draw_settings() -> void:
 	var u := (Save.steer_sens - 0.5) / 1.5
 	draw_rect(Rect2(sr.position.x, sr.position.y + 12, sr.size.x * u, 6), accent)
 	draw_circle(Vector2(sr.position.x + sr.size.x * u, sr.position.y + 15), 14, PAPER)
-	y += dy
+	y += 62
 	_row(y, "自动油门", "一直给油，只管方向、刹车和手刹", x)
 	_seg("set_gas", ["关", "开"], int(Save.auto_throttle), Rect2(cx, y, cw * 0.6, 42))
-	y += dy
-	# 和 Windows 版设置“操控”页同一项：只在拟真手感下起作用，默认开
-	var sim := Save.assist == 2
-	_row(y, "牵引力控制", ("拟真档：不让油门把后轮踩空" if sim else "只在“拟真”手感下起作用"), x)
-	_seg("set_tcs", ["开", "关"], 0 if Save.tcs else 1, Rect2(cx, y, cw * 0.6, 42))
-	# 当前选项的说明（与 Windows 版设置页的选项说明同文），放在开关右边
-	var tdesc := "平时不会被油门甩尾；用手刹起漂后放开油门，可以用油门续漂" if Save.tcs else "后轮随便空转：油门就能甩尾、保持漂移，但更容易打转"
-	_txt(f_body, tdesc, Vector2(cx + cw * 0.6 + 22, y + 27), 14, Color(PAPER, 0.8 if sim else 0.4))
-	y += dy
+	y += 62
 	_row(y, "画质", "流畅最省电；动态分辨率会自动保住帧率", x)
 	_seg("set_q", ["流畅", "均衡", "精致"], Save.quality, Rect2(cx, y, cw, 42))
-	y += dy
+	y += 62
 	_row(y, "显示帧率", "右上角显示实时帧率和渲染分辨率", x)
 	_seg("set_fps", ["关", "开"], int(Save.show_fps), Rect2(cx, y, cw * 0.6, 42))
-	y += dy
+	y += 62
 	_row(y, "声音", "发动机、轮胎和提示音", x)
 	_seg("set_snd", ["关", "开"], int(Save.sound), Rect2(cx, y, cw * 0.6, 42))
-	y += dy
+	y += 62
 	_row(y, "震动", "撞击和漂移时震动", x)
 	_seg("set_hap", ["关", "开"], int(Save.haptics), Rect2(cx, y, cw * 0.6, 42))
 	var br := Rect2(x, h - 62 - safe_b, 160, 46)
@@ -717,14 +707,16 @@ func _draw_help() -> void:
 	var x := maxf(safe_l + 20, size.x * 0.5 - 520)
 	_txt(f_zh, "操作", Vector2(x, 62), 44, PAPER)
 	_skew(Rect2(x, 74, 120, 4), accent, 0.5)
+	# 拟真档说明与 Windows 版 v2.10 同文；太长，分两行（第二行以空格开头，不画色条）
 	var lines := ["左半屏：转向（滑动 / 按键 / 重力，可在设置里改）", "右半屏：油门、刹车（停住后再按是倒车）、手刹",
 		"起漂：车速 30 以上，打方向 + 点一下手刹，然后踩住油门、方向继续往弯里打", "收漂：松开方向或反打，马上回正；连漂：反方向 + 再点手刹",
-		"拟真手感：轮胎物理，没有回正辅助，甩出去要自己反打、收油；能倒着滑、能 360°",
-		"牵引力控制（设置里，默认开）：拟真手感下不让油门把后轮踩空；手刹起漂后可以用油门续漂",
+		"拟真手感：像地平线开着车身稳定：平时打方向、给油不会滑出去；",
+		"  拉手刹甩起来以后不再帮你拉回，要自己反打收车，甩过 90 度会一直倒着滑，也能做 360。",
 		"自动漂移：每个弯都漂、带 360°，碰任意驾驶键接管，跑完一圈复位",
 		"训练场：复位键原地扶正，1 秒内连按两次回起点并复原所有道具", "支持蓝牙手柄：左摇杆转向，RT 油门，LT 刹车，A 手刹"]
 	for i in lines.size():
-		_skew(Rect2(x, 106 + i * 46, 8, 22), accent, 0.3)
+		if not lines[i].begins_with(" "):
+			_skew(Rect2(x, 106 + i * 46, 8, 22), accent, 0.3)
 		_txt(f_body, lines[i], Vector2(x + 24, 124 + i * 46), 18, PAPER)
 	var br := Rect2(x, h - 62 - safe_b, 160, 46)
 	_skew(br, accent if _b("back", br) else PAPER)
