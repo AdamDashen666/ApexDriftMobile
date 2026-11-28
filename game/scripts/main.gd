@@ -574,7 +574,12 @@ func _sim_tests() -> void:
 		await _run(2.0, 1, 0, 0, false)
 		await _run(1.5, 1, 0, 1, false)
 		await _run(2.5, 1, 0, 0, false)
-		_ck(s60 < 5.0 and s120 < 5.0 and _mxb < 5.0 and f60 and f120 and _flat(), "%s 平时打方向最大侧滑 S60 %.1f° S120 %.1f° S180 %.1f°（结束 %.0fkm/h）" % [tg, s60, s120, _mxb, car.kmh])
+		var sline := "%s 平时打方向（全油门）最大侧滑 S60 %.1f° S120 %.1f° S180 %.1f°（结束 %.0fkm/h）" % [tg, s60, s120, _mxb, car.kmh]
+		if tc:
+			_ck(s60 < 5.0 and s120 < 5.0 and _mxb < 5.0 and f60 and f120 and _flat(), sline)
+		else:
+			# Windows 版“侧滑 <5°”是按默认（牵引力控制开）要求的；关掉后全油门本来就能把车尾踩出去，只记录
+			print("  info " + sline)
 		# 低速全油门满舵（出弯给油）：开着牵引力控制不甩，关掉能用油门甩尾
 		await _sim_at(55.0)
 		await _run(2.0, 1, 0, 1, false)
@@ -629,14 +634,17 @@ func _sim_tests() -> void:
 
 # 按界面上的按钮（真实触摸事件，和手指点一样走 Ui._input）
 func _tap(id: String) -> void:
-	await get_tree().process_frame
-	await get_tree().process_frame
+	# 换界面后按钮要等下一次重画（60Hz）才有：最多等 30 帧
 	var found := false
 	var r := Rect2()
-	for b in ui.btns:
-		if b[0] == id:
-			r = b[1]
-			found = true
+	for k in 30:
+		await get_tree().process_frame
+		for b in ui.btns:
+			if b[0] == id:
+				r = b[1]
+				found = true
+		if found:
+			break
 	if not found:
 		_ck(false, "界面 %s 上找不到按钮 %s" % [ui.screen, id])
 		return
