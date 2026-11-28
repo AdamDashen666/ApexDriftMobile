@@ -601,13 +601,22 @@ func _sim_tests() -> void:
 		await _run(1.2, 1, 0, 1, true)
 		await _run(3.0, 1, 0, 0, false)
 		_ck(_pk > 90.0 and _flat(), "%s 120km/h 手刹+满舵 1.2s：车头最多转过 %.0f° 结束 %.0fkm/h" % [tg, _pk, car.kmh])
-	# 牵引力控制关：手刹一甩再全油门满舵，能甩圈（Windows 版约一圈）
-	car.tcs = false
-	await _sim_at(70.0)
-	var sp0 := spins_seen
-	await _run(0.4, 0.5, 0, 1, true)
-	await _run(4.0, 1, 0, 1, false)
-	_ck(_pabs > 270.0 and _flat(), "拟真/牵引力控制关 70km/h 手刹一甩再全油门满舵 4 秒：车头累计转过 %.0f°，记 360 %d 次" % [_pabs, spins_seen - sp0])
+	# 手刹一甩再全油门满舵（Windows 版约一圈）。v2.9 起牵引力控制开着也一样：拉手刹起的横滑期间不限油门，
+	# 车身稳住 1 秒后恢复；中间那段检查牵引力控制确实没在限，最后松手停稳再直线给油，检查它回来了（只在开着时）
+	for tc in [true, false]:
+		car.tcs = tc
+		var tg2 := "拟真/牵引力控制%s" % ("开" if tc else "关")
+		await _sim_at(70.0)
+		var sp0 := spins_seen
+		await _run(0.4, 0.5, 0, 1, true)
+		await _run(1.0, 1, 0, 1, false)
+		var free_mid := car.sim_hand_slide and car.sim_tcs_cap < 0.0
+		await _run(3.0, 1, 0, 1, false)
+		var spun := _pabs
+		await _run(3.0, 0, 0, 0, false)
+		await _run(1.5, 1, 0, 0, false)
+		var back := not car.sim_hand_slide and (car.sim_tcs_cap >= 0.0) == bool(tc)
+		_ck(spun > 270.0 and free_mid and back and _flat(), "%s 70km/h 手刹一甩再全油门满舵 4 秒：车头累计转过 %.0f°，记 360 %d 次；横滑中不限油门=%s，稳住后恢复=%s" % [tg2, spun, spins_seen - sp0, free_mid, back])
 	# 倒车：停住按住刹车挂倒挡，再按油门挂回前进
 	car.tcs = true
 	await _sim_at(0.0)

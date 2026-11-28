@@ -969,9 +969,14 @@ func _sim(st: PhysicsDirectBodyState3D, dt: float, gup: Vector3, fwd: Vector3, r
 	var rear_brake := minf(brake_f * (1.0 - SIM_BRAKE_FRONT), SIM_REAR_BRAKE_CAP * (_cxr[0] + _cxr[1]) * sqrt(maxf(0.1, 1.0 - sim_rear_lat * sim_rear_lat)))
 	# 牵引力控制（像地平线默认那样）：只限油门，从不转车头。按后轮实际的侧偏角算附着圆里还剩多少纵向，
 	# 驱动力只给到合成滑移为峰值 90% 的那么多；后轮已经横着滑时也不放开，只许一点空转（SIM_TCS_SLIP × 峰值滑移率）。
-	# 只有拉着手刹时不限（手刹甩尾、360 照做，松手刹 0.1 秒后恢复）；想用油门漂移就在设置里关掉
+	# 拉手刹起的横滑（玩家自己要漂、要原地转圈）不限（v2.9）：从拉手刹起，直到车身不再横滑后再过 1 秒（sim_hand_slide），
+	# 这段时间油门照“关掉牵引力控制”处理，可以用油门续漂；出弯给油、压路肩、被撞歪这种不是自己要的横滑照样限
 	sim_hand_t = 0.0 if in_hand else sim_hand_t + dt
-	var use_tcs := tcs and sim_hand_t > SIM_TCS_HAND and gear_now > 0
+	if in_hand:
+		sim_hand_slide = true
+	elif not sim_free and sim_hand_t > 1.0:
+		sim_hand_slide = false
+	var use_tcs := tcs and sim_hand_t > SIM_TCS_HAND and gear_now > 0 and not sim_hand_slide
 	var tcs_cap := 1e9
 	if use_tcs:
 		tcs_cap = 0.0
@@ -985,10 +990,6 @@ func _sim(st: PhysicsDirectBodyState3D, dt: float, gup: Vector3, fwd: Vector3, r
 	sim_tcs_cap = tcs_cap if use_tcs else -1.0
 	# 关掉牵引力控制时后轮空转的上限：车身正着时只许中等空转，车尾横得越多许得越多（油门照样能甩尾、保持漂移）。
 	# 拉手刹起的横滑（玩家自己要漂、要原地转圈）许得多；出弯给油、被撞歪这种不是自己要的横滑许得少，能救回来
-	if in_hand:
-		sim_hand_slide = true
-	elif not sim_free and sim_hand_t > 1.0:
-		sim_hand_slide = false
 	var gain := SIM_SPIN_GAIN_HAND if sim_hand_slide else SIM_SPIN_GAIN
 	var ws_lim := 1e9
 	if not use_tcs and gear_now > 0 and not in_hand:
