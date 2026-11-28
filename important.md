@@ -2,6 +2,7 @@
 
 - 用户要求：移动端 120fps 以上、不限帧率；iOS 交付未签名 IPA（用户自签，不要催证书），安卓交付已签名可直接安装的 APK；沟通、注释、界面用中文。
 - 内容原创，不复刻任何具体游戏；素材只用原创或 CC0 / CC-BY，包内必须带 `CREDITS.txt`。
+- 拟真档（`car.gd` 的 `_sim()` 和 `SIM_*` 常量）是 Windows 版 `ApexDriftVehiclePawn.cpp` 的 `UpdateSimPhysics` / `namespace ApexSim` 的移植：两边要一起改，改完对照两边的拟真测试数值。拟真档不许加任何把车头拉回 / 摆正的辅助。
 - 仓库公开（macOS 构建免费），代码和素材别人都能看到，不要放任何密钥、密钥库、密码；签名 secrets 只能由用户自己设置（`scripts/set-android-signing.sh`），代理不要代设、不要接触用户证书。
 - `preferredFrameRate=120` 需要 `display/window/ios/allow_high_refresh_rate=true` 且 Info.plist `CADisableMinimumFrameDurationOnPhone=true`，CI 会检查；60Hz 机型和低电量模式上限就是 60。
 - 安卓高刷：Android 15 起系统默认把游戏压在 60Hz，必须对渲染 Surface 调 `setFrameRate()`（`droid.gd`）。Godot 自带的 Swappy 会按启动时刻的刷新率定死交换间隔（启动时 60 就一直 60），所以 `display/window/frame_pacing/android/enable_frame_pacing=false`，别打开。
