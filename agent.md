@@ -22,7 +22,8 @@
 - 手动触发 workflow 时 iOS 和安卓都出。Windows 上不在本机运行 Godot（权限不允许），全部在 CI 上跑；`scripts/ci-run.sh` 推送并等构建、下载产物到 `out/<run_id>/`。
 
 ## 当前状态
-- iOS v1.0 已交付（run 45689037016，未签名 IPA 约 92MB，iOS 16+，A12 起）。
+- 最新包：run 46105249531（2026-11-28，当前代码，含安卓那批共用改动）：iOS 未签名 IPA 约 92MB（iOS 16+，A12 起），安卓 APK 约 145MB（versionCode 17）；逻辑测试全过，macOS Metal 截图正常。首个 iOS 包是 run 45689037016。
+- 移动版是独立的 Godot 实现，没有同步 UE 版 v2.6–v2.8 的改动（拟真档轮胎物理 / 牵引力控制、DLSS 等）。
 - 安卓 v1.0 已交付（最终绿灯 run 45824639448，APK 在 `out/45824639448/android-apk/`）：APK 约 138MB（其中 libgodot_android.so 71MB 不压缩存放），versionName 1.0，最低 Android 10（API 29），target 36，只有 arm64-v8a，权限只有 VIBRATE，横屏 userLandscape，gradle 构建。
 - 安卓签名：默认每次构建临时生成调试密钥库（`androiddebugkey`/`android`），**签名每次不同，覆盖安装前要先卸载旧版**；仓库若配了 `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` 三个 secrets 就用用户证书（用户自己运行 `scripts/set-android-signing.sh` 设置）。versionCode = 构建序号。
 - `perf.gd`：动态分辨率 → 到底还掉帧就逐级关 MSAA、再降分辨率、关阴影；低电量锁 60 时自动按 60 跑。
