@@ -309,6 +309,7 @@ func reset_car() -> void:
 	cam.snap()
 
 func _on_impact(strength: float, pos: Vector3, is_prop: bool) -> void:
+	impacts_seen += 1
 	if is_prop:
 		sfx.play("SFX_Impact_Graze", clampf(-16.0 + strength * 6.0, -18.0, -4.0), randf_range(0.9, 1.15))
 		score.prop_hit()
@@ -495,6 +496,7 @@ var _pabs := 0.0
 var _ymax := -1e9
 var _upmin := 1.0
 var spins_seen := 0
+var impacts_seen := 0
 var sim_p0 := Vector3(-290, 0.1, -345)    # 训练场平地，朝 +X 前方几百米没有坡道
 
 func _trk_reset() -> void:
@@ -506,9 +508,9 @@ func _trk_reset() -> void:
 	_ymax = -1e9
 	_upmin = 1.0
 
-func _run(sec: float, th: float, br: float, steer: float, hand: bool) -> void:
+func _run(sec: float, th: float, br: float, steer: float, hand: bool, cruise := 0.0) -> void:
 	for i in maxi(1, int(round(sec * 120.0))):
-		car.in_throttle = th
+		car.in_throttle = clampf((cruise - car.kmh) / 8.0, 0.0, th) if cruise > 0.0 else th
 		car.in_brake = br
 		car.in_steer = steer
 		car.in_hand = hand
@@ -546,11 +548,13 @@ func _sim_tests() -> void:
 			t100 = (i + 1) / 120.0
 	_ck(t100 > 0.0 and t100 < 5.0 and _mxb < 2.0 and _flat(), "拟真 直线全油门：0-100 %.2fs 最大侧滑 %.1f° 5 秒 %.0fkm/h" % [t100, _mxb, car.kmh])
 	# 平时打方向（Windows 版 S60 / S120 / S180 小舵量场景）：侧滑 <5°（Windows v2.10 ≤2°）
+	# S60 定速 60km/h（全油门会在 5 秒里冲到 250km/h，跑出平地）；S120 / S180 全油门
+	var hit0 := impacts_seen
 	await _sim_at(60.0)
-	await _run(0.25, 1, 0, 1, false)
-	await _run(2.0, 1, 0, 0, false)
-	await _run(1.0, 1, 0, 0.4, false)
-	await _run(2.0, 1, 0, 0, false)
+	await _run(0.25, 1, 0, 1, false, 60.0)
+	await _run(2.0, 1, 0, 0, false, 60.0)
+	await _run(1.0, 1, 0, 0.4, false, 60.0)
+	await _run(2.0, 1, 0, 0, false, 60.0)
 	var s60 := _mxb
 	var f60 := _flat()
 	await _sim_at(120.0)
@@ -564,7 +568,7 @@ func _sim_tests() -> void:
 	await _run(2.0, 1, 0, 0, false)
 	await _run(1.5, 1, 0, 1, false)
 	await _run(2.5, 1, 0, 0, false)
-	_ck(s60 < 5.0 and s120 < 5.0 and _mxb < 5.0 and f60 and f120 and _flat(), "拟真 平时打方向（全油门）最大侧滑 S60 %.1f° S120 %.1f° S180 %.1f°（结束 %.0fkm/h）" % [s60, s120, _mxb, car.kmh])
+	_ck(s60 < 5.0 and s120 < 5.0 and _mxb < 5.0 and f60 and f120 and _flat(), "拟真 平时打方向最大侧滑 S60 %.1f° S120 %.1f° S180 %.1f°（结束 %.0fkm/h，平地 %s/%s/%s，撞到东西 %d 次）" % [s60, s120, _mxb, car.kmh, f60, f120, _flat(), impacts_seen - hit0])
 	# 出弯给油：低速全油门满舵，车身稳定不让车滑出去
 	await _sim_at(55.0)
 	await _run(2.0, 1, 0, 1, false)
@@ -749,14 +753,14 @@ func _autotest() -> void:
 						break
 				_ck(on and mxd > 22.0 and mxd < 70.0 and tz < 1.6, "%s 漂移角 %.0f° 保持=%s 松方向 %.2fs 回正 车速 %.0f" % [tag, mxd, on, tz, car.kmh])
 			else:
-				# 拟真：按住手刹+满舵一直转（能 360）；松手后不拉回，3 秒后停在车头朝前或车尾朝前（倒着滑）都算稳住
+				# 拟真：手刹+满舵 0.9s 甩过 90°，松手后不拉回，车尾朝前稳住一直倒着滑（Windows v2.10）
 				_trk_reset()
 				await _run(0.9, 1, 0, 1, true)
 				var rot := _pabs
 				await _run(3.0, 0, 0, 0, false)
 				var ap := absf(car.beta)
 				var yr := absf(rad_to_deg(car.angular_velocity.y))
-				_ck(rot > 270.0 and yr < 15.0 and (ap < 6.0 or ap > 165.0 or car.kmh < 12.0) and _flat(), "%s 手刹+满舵 0.9s 车头转过 %.0f°，松手 3 秒后 ψ %.0f° 横摆 %.0f°/s %.0fkm/h" % [tag, rot, ap, yr, car.kmh])
+				_ck(rot > 100.0 and ap > 165.0 and yr < 15.0 and car.sim_free and _flat(), "%s 手刹+满舵 0.9s 车头甩过 %.0f°，松手 3 秒后 ψ %.0f° 横摆 %.0f°/s %.0fkm/h（倒着滑）" % [tag, rot, ap, yr, car.kmh])
 	await _sim_tests()
 	car.set_car(0, 0)
 	car.assist = 0
